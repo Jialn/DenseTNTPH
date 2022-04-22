@@ -80,14 +80,14 @@ Suppose the training data of Argoverse motion forecasting is at ```./train/data/
 ```bash
 OUTPUT_DIR=models.densetnt.1; \
 GPU_NUM=8; \
-python src/run.py --argoverse --future_frame_num 30 \
-  --do_train --data_dir train/data/ --output_dir ${OUTPUT_DIR} \
+python3 src/run.py --argoverse --future_frame_num 30 \
+  --do_train --data_dir /media/jiangtao.li/simu_machine_dat/argoverse/train/data/ --output_dir ${OUTPUT_DIR} \
   --hidden_size 128 --train_batch_size 64 --use_map \
   --core_num 16 --use_centerline --distributed_training ${GPU_NUM} \
   --other_params \
     semantic_lane direction l1_loss \
     goals_2D enhance_global_graph subdivide lazy_points new laneGCN point_sub_graph \
-    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 \
+    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3
 ```
 Training takes 20 minutes per epoch and 5 hours for the default 16 epochs on 8 × 2080Ti. 
 
