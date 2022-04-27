@@ -210,7 +210,7 @@ class Decoder(nn.Module):
         gt_points = labels[i].reshape([self.future_frame_num, 2])
 
         stage_one_topk_ids = None
-        if 'stage_one' in args.other_params:
+        if 'stage_one' in args.other_params: # MarkJT
             stage_one_topk_ids = self.goals_2D_per_example_stage_one(i, mapping, lane_states_batch, inputs, inputs_lengths,
                                                                      hidden_states, device, loss)
 
@@ -221,7 +221,7 @@ class Decoder(nn.Module):
         index = torch.argmax(scores).item()
         highest_goal = goals_2D[index]
 
-        if 'lazy_points' in args.other_params:
+        if 'lazy_points' in args.other_params: # MarkJT
             scores, highest_goal, goals_2D = \
                 self.goals_2D_per_example_lazy_points(i, goals_2D, mapping, labels, device, scores,
                                                       get_scores_inputs, stage_one_topk_ids, gt_points)
@@ -254,10 +254,10 @@ class Decoder(nn.Module):
                     assert False
 
     def goals_2D_eval(self, batch_size, mapping, labels, hidden_states, inputs, inputs_lengths, device):
-        if 'set_predict' in args.other_params:
+        if 'set_predict' in args.other_params:      # MarkJT
             pred_goals_batch = [mapping[i]['set_predict_ans_points'] for i in range(batch_size)]
             pred_probs_batch = np.zeros((batch_size, 6))
-        elif 'optimization' in args.other_params:
+        elif 'optimization' in args.other_params:   # MarkJT
             pred_goals_batch, pred_probs_batch = utils.select_goals_by_optimization(
                 np.array(labels).reshape([batch_size, self.future_frame_num, 2]), mapping)
         elif args.nms_threshold is not None:
@@ -271,7 +271,7 @@ class Decoder(nn.Module):
         assert pred_goals_batch.shape == (batch_size, self.mode_num, 2)
         assert pred_probs_batch.shape == (batch_size, self.mode_num)
 
-        if 'complete_traj' in args.other_params:
+        if 'complete_traj' in args.other_params:    # MarkJT
             pred_trajs_batch = []
             for i in range(batch_size):
                 targets_feature = self.goals_2D_mlps(torch.tensor(pred_goals_batch[i], dtype=torch.float, device=device))

@@ -5,3 +5,4 @@ src/utils_cython.cpython-38-x86_64-linux-gnu.so
 src/utils_cython.html
 src/build/temp.linux-x86_64-3.8/utils_cython.o
 src/modeling/__pycache__/*
+models.densetnt.*
