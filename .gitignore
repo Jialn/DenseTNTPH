@@ -1,8 +1,13 @@
-models.densetnt.1/*
 src/__pycache__/*
 src/utils_cython.c
 src/utils_cython.cpython-38-x86_64-linux-gnu.so
 src/utils_cython.html
 src/build/temp.linux-x86_64-3.8/utils_cython.o
 src/modeling/__pycache__/*
-models.densetnt.*
+
+models.densetnt.set_predict.1/**/*
+!models.densetnt.set_predict.1/model_save
+!models.densetnt.set_predict.1/model_save/model.16.bin
+models.densetnt.1/**/*
+!models.densetnt.1/model_save
+!models.densetnt.1/model_save/model.16.bin

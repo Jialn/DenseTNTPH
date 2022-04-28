@@ -364,16 +364,6 @@ class Decoder(nn.Module):
                 self.goals_2D_per_example(i, goals_2D, mapping, lane_states_batch, inputs, inputs_lengths,
                                           hidden_states, labels, labels_is_valid, device, loss, DE)
 
-            if 'set_predict' in args.other_params:
-                pass
-                # if args.do_eval:
-                #     pred_trajs_batch = np.zeros([batch_size, 6, self.future_frame_num, 2])
-                #     for i in range(batch_size):
-                #         if 'set_predict_trajs' in mapping[i]:
-                #             pred_trajs_batch[i] = mapping[i]['set_predict_trajs']
-                #             for each in pred_trajs_batch[i]:
-                #                 utils.to_origin_coordinate(each, i)
-                #     return pred_trajs_batch
 
             if args.do_eval:
                 return self.goals_2D_eval(batch_size, mapping, labels, hidden_states, inputs, inputs_lengths, device)
