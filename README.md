@@ -13,7 +13,8 @@ Requires:
 ### 1) Install Packages
 
 ``` bash
- pip install -r requirements.txt
+ pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
+ pip3 install -r requirements.txt
 ```
 
 ### 2) Install Argoverse API
@@ -110,7 +111,7 @@ Example on my machine:
 ```
 python3 src/run.py --argoverse --future_frame_num 30 --output_dir models.densetnt.1   --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1  --other_params     semantic_lane direction      goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ # --reuse_temp_file --visualize
 ```
-Result:
+Result for all vali data:
 ```
 method 0, FDE 1.3026716672555985, MR 0.07202573976489664, other_errors {'stage_one_k': 3.005421564653425, 'stage_one_recall': 0.9601743007701662}
 other_errors {'stage_one_k': 3.005421564653425, 'stage_one_recall': 0.9601743007701662}
@@ -120,10 +121,10 @@ DE@1 0.8137086290007429
 DE@2 1.781262619181053
 DE@3 3.1312567902911526
 ```
+For val_200 (actually 256): {'minADE': 0.8898264549311076, 'minFDE': 1.382250767700175, 'MR': 0.09375}
 
 ### 3) Train Set Predictor (Optional)
 Compared with the optimization algorithm (default setting), the set predictor has similar performance but faster inference speed.
-
 
 After training DenseTNT, suppose the model path is at ```models.densetnt.1/model_save/model.16.bin```. The command for training the set predictor is:
 ```bash
@@ -177,6 +178,7 @@ DE@1 0.8426495707258723
 DE@2 1.8900086805419107
 DE@3 3.3966121944761225
 ```
+For val_200 (actually 256): {'minADE': 0.9427310026252854, 'minFDE': 1.4779373419324868, 'MR': 0.0859375}
 
 ## Citation
 If you find our work useful for your research, please consider citing the paper:

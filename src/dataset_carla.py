@@ -1,3 +1,19 @@
+"""
+CarlaEnvironment.
+Install carla:
+.. code-block:: bash
+    wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.9.tar.gz
+    mkdir carla
+    tar zxf CARLA_0.9.9.tar.gz -C carla
+    cd carla/Import
+    wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/AdditionalMaps_0.9.9.tar.gz
+    cd ..
+    ./ImportAssert.sh
+    easy_install PythonAPI/carla/dist/carla-0.9.9-py3.7-linux-x86_64.egg
+    pip install networkx==2.2
+Make sure you are using python3.7
+"""
+
 import copy
 import math
 import multiprocessing
