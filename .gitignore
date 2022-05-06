@@ -14,3 +14,4 @@ models.densetnt.set_predict.1/**/*
 models.densetnt.1/**/*
 !models.densetnt.1/model_save
 !models.densetnt.1/model_save/model.16.bin
+__pycache__/carla_visualize.cpython-37.pyc
