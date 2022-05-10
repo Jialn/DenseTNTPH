@@ -2,7 +2,7 @@
 Run the eval realtime with carla.
 
 Run example:
-python3 src/run_eval_realtime.py --argoverse --future_frame_num 30 \
+python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
   --output_dir models.densetnt.1 --hidden_size 128 --train_batch_size 64 --use_map \
   --core_num 16 --use_centerline --distributed_training 1 \
   --other_params \
@@ -25,36 +25,13 @@ from torch.utils.data import SequentialSampler
 import structs
 import utils
 from modeling.vectornet import VectorNet
+from carla_with_traffic import CarlaSyncModeWithTraffic
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def eval_instance_argoverse(batch_size, args, pred, mapping, file2pred, file2labels, DEs):
-    for i in range(batch_size):
-        a_pred = pred[i]
-        assert a_pred.shape == (6, args.future_frame_num, 2)
-        file_name_int = int(os.path.split(mapping[i]['file_name'])[1][:-4])
-        file2pred[file_name_int] = a_pred
-        if not args.do_test:
-            file2labels[file_name_int] = mapping[i]['origin_labels']
-
-    if not args.do_test:
-        DE = np.zeros([batch_size, args.future_frame_num])
-        for i in range(batch_size):
-            origin_labels = mapping[i]['origin_labels']
-            for j in range(args.future_frame_num):
-                DE[i][j] = np.sqrt((origin_labels[j][0] - pred[i, 0, j, 0]) ** 2 + (
-                        origin_labels[j][1] - pred[i, 0, j, 1]) ** 2)
-        DEs.append(DE)
-        miss_rate = 0.0
-        if 0 in utils.method2FDEs:
-            FDEs = utils.method2FDEs[0]
-            miss_rate = np.sum(np.array(FDEs) > 2.0) / len(FDEs)
-
-
+carla_client = CarlaSyncModeWithTraffic()
 
 def do_eval(args):
     device = torch.device(
@@ -79,15 +56,11 @@ def do_eval(args):
     model_recover = torch.load(args.model_recover_path)
     model.load_state_dict(model_recover, strict=False)
 
-    if 'set_predict-train_recover' in args.other_params and 'complete_traj' in args.other_params:
-        model_recover = torch.load(args.other_params['set_predict-train_recover'])
-        if 'do_train' in args.other_params:
-            utils.load_model(model.decoder.complete_traj_cross_attention, model_recover, prefix='decoder.complete_traj_cross_attention.')
-            utils.load_model(model.decoder.complete_traj_decoder, model_recover, prefix='decoder.complete_traj_decoder.')
-        else:
-            utils.load_model(model.decoder.set_predict_decoders, model_recover, prefix='decoder.set_predict_decoders.')
-            utils.load_model(model.decoder.set_predict_encoders, model_recover, prefix='decoder.set_predict_encoders.')
-            utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
+    # load set_predictor model
+    model_recover = torch.load(args.other_params['set_predict-train_recover'])
+    utils.load_model(model.decoder.set_predict_decoders, model_recover, prefix='decoder.set_predict_decoders.')
+    utils.load_model(model.decoder.set_predict_encoders, model_recover, prefix='decoder.set_predict_encoders.')
+    utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
 
     model.to(device)
     model.eval()
@@ -95,26 +68,21 @@ def do_eval(args):
     file2labels = {}
     DEs = []
 
-    argo_pred = structs.ArgoPred()
-
+    test_mapping = None
     for batch in eval_dataloader:
-        pred_trajectory, pred_score, _ = model(batch, device)
+        test_mapping = batch
+        break
+    print(test_mapping[0].keys())
 
-        mapping = batch
+    for i in range(2):
+        carla_client.tick()
+        print(test_mapping[0]['matrix'])
+        # test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'] = carla_client.get_vectornet_input()
+        pred_trajectory, pred_score, _ = model(test_mapping, device)
         batch_size = pred_trajectory.shape[0]
-        print(batch_size)
         for i in range(batch_size):
             assert pred_trajectory[i].shape == (6, args.future_frame_num, 2)
             assert pred_score[i].shape == (6,)
-            argo_pred[mapping[i]['file_name']] = structs.MultiScoredTrajectory(pred_score[i].copy(), pred_trajectory[i].copy())
-        print(mapping[0].keys())
-        if args.argoverse:
-            eval_instance_argoverse(batch_size, args, pred_trajectory, mapping, file2pred, file2labels, DEs)
-        break
-
-    if args.argoverse:
-        from dataset_argoverse import post_eval
-        post_eval(args, file2pred, file2labels, DEs)
 
 '''
 mapping
@@ -125,7 +93,6 @@ dict_keys([
     'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs'])
 
 '''
-
 
 
 def main():
@@ -141,6 +108,10 @@ def main():
     do_eval(args)
     logger.info('Finish.')
 
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        carla_client.destroy_vechicles()
 

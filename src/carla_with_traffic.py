@@ -9,6 +9,7 @@ import pygame
 from numpy import random
 import math
 from carla_visualize import *
+from utils import get_pad_vector, get_subdivide_polygons
 
 class CarlaSyncModeWithTraffic(object):
     """
@@ -17,6 +18,8 @@ class CarlaSyncModeWithTraffic(object):
 
     def __init__(self):
         self.vehicles_list = []
+        self.vehicles_pos_list = []
+        self.hero_pos_list = []
         self.walkers_list = []
         self.all_id = []
         self.client = carla.Client('127.0.0.1', 2000)  # ip and port
@@ -193,8 +196,8 @@ class CarlaSyncModeWithTraffic(object):
             pygame.draw.polygon(surface, color, corners)
 
     def _render_vehicles(self, surface, list_v, world_to_pixel):
-        print("list_v:")
-        print(len(list_v))
+        # print("list_v:")
+        # print(len(list_v))
         for v in list_v:
             color = COLOR_SKY_BLUE_0
             if int(v[0].attributes['number_of_wheels']) == 2:
@@ -208,7 +211,7 @@ class CarlaSyncModeWithTraffic(object):
                        carla.Location(x=-bb.x, y=bb.y), carla.Location(x=-bb.x, y=-bb.y)]
             v[1].transform(corners)
             corners = [world_to_pixel(p) for p in corners]
-            print(corners)
+            # print(corners)
             pygame.draw.lines(surface, color, False, corners, int(math.ceil(4.0 * self.map_image.scale)))
 
     def render_actors(self, surface, vehicles, walkers):
@@ -262,14 +265,23 @@ class CarlaSyncModeWithTraffic(object):
 
     def tick(self):
         self.world.tick()
-
+        # save the trajectory of all vechicles into a list
+        for i in range(len(self.vehicles_list)):
+            pos = self.vehicles_list[0].get_location()  # calra_loc
+            self.vehicles_pos_list[i].append(np.array([pos.x, pos.y]))
+            if len(self.vehicles_pos_list[i]) > 51:
+                self.vehicles_pos_list[i].pop(0)
+            if self.vehicles_list[vhid].attributes['role_name'] == 'hero'
+                self.hero_pos_list.append(np.array([pos.x, pos.y]))
+                if len(self.hero_pos_list) > 51:
+                    self.hero_pos_list.pop(0)
+        # save actor's transforms for visualize
         actors = self.world.get_actors()
         self.actors_with_transforms = [(actor, actor.get_transform()) for actor in actors]
         if self.hero_actor is not None:
             self.hero_transform = self.hero_actor.get_transform()
-
+        # visualize
         self.render()
-
     
     def get_step_observation(self):
         map = self.map
@@ -280,6 +292,101 @@ class CarlaSyncModeWithTraffic(object):
         if self.visualize_observation:
             pass
         return None
+
+    def get_vectornet_input(self):
+        two_seconds_point = 20
+        polyline_spans = []
+        vectors = []
+        trajs = []
+        map_start_polyline_idx = None
+        agent_loc = hero_pos_list[two_seconds_point]
+
+        # get vehicles' trajectory
+        for vhid in range(len(self.vehicles_pos_list)):
+            vh_loc = self.vehicles_pos_list[vhid][two_seconds_point]
+            if abs(vh_loc[0] - agent_loc[0]) < 100 and abs(vh_loc[1] - agent_loc[1]) < 100:
+                start = len(vectors)
+                # traj for denseTNT visualize:
+                traj = []
+                for pos in self.vehicles_pos_list[vhid]:
+                    traj.append(pos[0])
+                    traj.append(pos[1])
+                traj = traj.reshape((-1, 2))
+                trajs.append(traj)
+                # trajectory for prediction
+                is_agent = self.vehicles_list[vhid].attributes['role_name'] == 'hero'
+                is_others, is_av = not is_agent, False
+                for i, line in enumerate(self.vehicles_pos_list[vhid]):
+                    x, y = line[0], line[1]
+                    time_stamp = (i - two_seconds_point) * 0.1
+                    if i > 0:
+                        line_pre = self.vehicles_pos_list[vhid][i-1]
+                        # print(x-line_pre[X], y-line_pre[Y])
+                        vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
+                                is_agent, is_others, len(polyline_spans), i]
+                        vectors.append(get_pad_vector(vector))
+                # set polyline_spans
+                end = len(vectors)
+                polyline_spans.append([start, end])
+            # end vehicles' trajectory
+        map_start_polyline_idx = len(polyline_spans)
+
+
+        # get sub-map around agent location
+
+        lane_ids = am.get_lane_ids_in_xy_bbox(x, y, city_name, query_search_range_manhattan=args.max_distance)
+        local_lane_centerlines = [am.get_lane_segment_centerline(lane_id, city_name) for lane_id in lane_ids]
+        polygons = local_lane_centerlines
+
+        polygons = [polygon[:, :2].copy() for polygon in polygons]
+        angle = mapping['angle']
+        for index_polygon, polygon in enumerate(polygons):
+            for i, point in enumerate(polygon):
+                point[0], point[1] = rotate(point[0] - x, point[1] - y, angle)
+
+        local_lane_centerlines = [polygon for polygon in polygons]
+
+        for index_polygon, polygon in enumerate(polygons):
+            start = len(vectors)
+            # semantic_lane 
+            lane_id = lane_ids[index_polygon]
+            # lane_segment = am.city_lane_centerlines_dict[city_name][lane_id]
+            # assert_(len(polygon) >= 2)
+            for i, point in enumerate(polygon):
+                if i > 0:
+                    vector = [0] * 128 # args.hidden_size
+                    vector[-1 - VECTOR_PRE_X], vector[-1 - VECTOR_PRE_Y] = point_pre[0], point_pre[1]
+                    vector[-1 - VECTOR_X], vector[-1 - VECTOR_Y] = point[0], point[1]
+                    vector[-5] = 1
+                    vector[-6] = i
+
+                    vector[-7] = len(polyline_spans)
+
+                    # semantic_lane 
+                    vector[-8] = 1 if lane_segment.has_traffic_control else -1
+                    vector[-9] = 1 if lane_segment.turn_direction == 'RIGHT' else \
+                        -1 if lane_segment.turn_direction == 'LEFT' else 0
+                    vector[-10] = 1 if lane_segment.is_intersection else -1
+
+                    # pre-point
+                    point_pre_pre = (2 * point_pre[0] - point[0], 2 * point_pre[1] - point[1])
+                    
+                    if i >= 2:
+                        point_pre_pre = polygon[i - 2]
+                    vector[-17] = point_pre_pre[0]
+                    vector[-18] = point_pre_pre[1]
+
+                    vectors.append(vector)
+                point_pre = point
+
+            end = len(vectors)
+            if start < end:
+                polyline_spans.append([start, end])
+
+        # ready to output
+        matrix = np.array(vectors)
+        polyline_spans=[slice(each[0], each[1]) for each in polyline_spans]
+        return matrix, polyline_spans, map_start_polyline_idx, trajs
 
     def destroy_vechicles(self):
         settings = self.world.get_settings()
