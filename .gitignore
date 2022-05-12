@@ -15,3 +15,5 @@ models.densetnt.1/**/*
 !models.densetnt.1/model_save
 !models.densetnt.1/model_save/model.16.bin
 __pycache__/carla_visualize.cpython-37.pyc
+bound_info.npy
+lane_info.npy

@@ -76,8 +76,9 @@ def do_eval(args):
 
     for i in range(2):
         carla_client.tick()
-        print(test_mapping[0]['matrix'])
-        # test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'] = carla_client.get_vectornet_input()
+        # print(test_mapping[0]['matrix'])
+        # test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
+        #     test_mapping[0]['trajs'] = carla_client.get_vectornet_input()
         pred_trajectory, pred_score, _ = model(test_mapping, device)
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):

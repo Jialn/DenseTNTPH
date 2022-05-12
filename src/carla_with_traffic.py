@@ -1,5 +1,9 @@
 """
 ./CarlaUE4.sh # -RenderOffScreen
+# to use less GPU memory:
+./CarlaUE4.sh  -RenderOffScreen -quality-level=Low 
+# testing:
+python src/carla_with_traffic.py
 
 """
 import time
@@ -7,9 +11,12 @@ import carla
 import logging
 import pygame
 from numpy import random
+import numpy as np
 import math
 from carla_visualize import *
-from utils import get_pad_vector, get_subdivide_polygons
+from utils import get_subdivide_polygons, rotate
+from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
+
 
 class CarlaSyncModeWithTraffic(object):
     """
@@ -29,15 +36,19 @@ class CarlaSyncModeWithTraffic(object):
         self.hybrid = False
         self.filterv = 'vehicle.*'
         self.generationv = 'All'
-        self.number_of_vehicles = 25
+        self.number_of_vehicles = 20
+        self.max_trajectory_size = 51
+        self.vector_net_hidden_size = 128
         self.visualize_observation = True
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
-        print(self.client.get_available_maps())
+        # print(self.client.get_available_maps())
         self._setup_client()
         self.hero_actor = None
         self.spawned_hero = None
         self.actors_with_transforms = None
+        # self.world.unload_map_layer(carla.MapLayer.Buildings)
+        self.map = self.world.get_map()
         if self.visualize_observation:
             self.width, self.height = 1920, 1080
             pygame.init()
@@ -46,7 +57,6 @@ class CarlaSyncModeWithTraffic(object):
                 pygame.HWSURFACE | pygame.DOUBLEBUF)
             pygame.display.set_caption("visualizer")
 
-            self.map = self.world.get_map()
             self.map_image = MapImage(carla_world=self.world,
                 carla_map=self.map, pixels_per_meter=PIXELS_PER_METER)
             self.original_surface_size = self.height
@@ -64,9 +74,16 @@ class CarlaSyncModeWithTraffic(object):
             self.hero_surface = pygame.Surface((scaled_original_size, scaled_original_size)).convert()
             self.result_surface = pygame.Surface((self.surface_size, self.surface_size)).convert()
             self.result_surface.set_colorkey(COLOR_BLACK)
-            # Start hero mode by default
-            self._select_hero_actor()
-            self.hero_actor.set_autopilot(True)
+        # Start hero mode by default
+        self._select_hero_actor()
+        self.hero_actor.set_autopilot(True)
+        self.vehicles_pos_list = []
+        for i in range(len(self.vehicles_list)):
+            self.vehicles_pos_list.append([])
+        self.bound_info, self.lane_info = get_all_lane_info(self.map)
+        # pre-tick to fill trajectory buffer
+        for i in range(self.max_trajectory_size):
+            self.tick()
 
     def _get_actor_blueprints(self, filter, generation):
         bps = self.world.get_blueprint_library().filter(filter)
@@ -168,6 +185,7 @@ class CarlaSyncModeWithTraffic(object):
             self.hero_transform = self.hero_actor.get_transform()
             # Save it in order to destroy it when closing program
             self.spawned_hero = self.hero_actor
+            self.vehicles_list.append(self.hero_actor.id)
 
     def _split_actors(self):
         vehicles, traffic_lights, speed_limits, walkers = [], [], [], []
@@ -267,13 +285,15 @@ class CarlaSyncModeWithTraffic(object):
         self.world.tick()
         # save the trajectory of all vechicles into a list
         for i in range(len(self.vehicles_list)):
-            pos = self.vehicles_list[0].get_location()  # calra_loc
+            acotr_i = self.world.get_actor(self.vehicles_list[i])
+            pos = acotr_i.get_location()  # calra_loc
             self.vehicles_pos_list[i].append(np.array([pos.x, pos.y]))
-            if len(self.vehicles_pos_list[i]) > 51:
+            if len(self.vehicles_pos_list[i]) > self.max_trajectory_size:
                 self.vehicles_pos_list[i].pop(0)
-            if self.vehicles_list[vhid].attributes['role_name'] == 'hero'
+            # print( acotr_i.attributes['role_name'])
+            if acotr_i.attributes['role_name'] == 'hero':
                 self.hero_pos_list.append(np.array([pos.x, pos.y]))
-                if len(self.hero_pos_list) > 51:
+                if len(self.hero_pos_list) > self.max_trajectory_size:
                     self.hero_pos_list.pop(0)
         # save actor's transforms for visualize
         actors = self.world.get_actors()
@@ -281,68 +301,70 @@ class CarlaSyncModeWithTraffic(object):
         if self.hero_actor is not None:
             self.hero_transform = self.hero_actor.get_transform()
         # visualize
-        self.render()
-    
-    def get_step_observation(self):
-        map = self.map
-        # Nearest waypoint in the center of a Driving or Sidewalk lane.
-        # waypoint01 = map.get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
-        # Nearest waypoint but specifying OpenDRIVE parameters. 
-        # waypoint02 = map.get_waypoint_xodr(road_id,lane_id,s)
         if self.visualize_observation:
-            pass
-        return None
+            self.render()
 
     def get_vectornet_input(self):
-        two_seconds_point = 20
+        two_second_index = 20
+        max_distance = 100
         polyline_spans = []
         vectors = []
         trajs = []
         map_start_polyline_idx = None
-        agent_loc = hero_pos_list[two_seconds_point]
+        agent_loc = self.hero_pos_list[two_second_index]
+
+        def get_pad_vector(li, hidden_size):
+            # Pad vector to hidden_size
+            assert len(li) <= hidden_size
+            li.extend([0] * (hidden_size - len(li)))
+            return li
 
         # get vehicles' trajectory
+        # print(agent_loc)
         for vhid in range(len(self.vehicles_pos_list)):
-            vh_loc = self.vehicles_pos_list[vhid][two_seconds_point]
-            if abs(vh_loc[0] - agent_loc[0]) < 100 and abs(vh_loc[1] - agent_loc[1]) < 100:
+            vh_loc = self.vehicles_pos_list[vhid][two_second_index]
+            # print(vh_loc, end=",")
+            if abs(vh_loc[0] - agent_loc[0]) < max_distance and abs(vh_loc[1] - agent_loc[1]) < max_distance:
                 start = len(vectors)
                 # traj for denseTNT visualize:
                 traj = []
                 for pos in self.vehicles_pos_list[vhid]:
                     traj.append(pos[0])
                     traj.append(pos[1])
-                traj = traj.reshape((-1, 2))
+                traj = np.array(traj).reshape((-1, 2))
                 trajs.append(traj)
                 # trajectory for prediction
-                is_agent = self.vehicles_list[vhid].attributes['role_name'] == 'hero'
+                is_agent = self.world.get_actor(self.vehicles_list[vhid]).attributes['role_name'] == 'hero'
                 is_others, is_av = not is_agent, False
                 for i, line in enumerate(self.vehicles_pos_list[vhid]):
                     x, y = line[0], line[1]
-                    time_stamp = (i - two_seconds_point) * 0.1
+                    time_stamp = (i - two_second_index) * 0.1
                     if i > 0:
                         line_pre = self.vehicles_pos_list[vhid][i-1]
                         # print(x-line_pre[X], y-line_pre[Y])
                         vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
                                 is_agent, is_others, len(polyline_spans), i]
-                        vectors.append(get_pad_vector(vector))
+                        vectors.append(get_pad_vector(vector, self.vector_net_hidden_size))
                 # set polyline_spans
                 end = len(vectors)
                 polyline_spans.append([start, end])
             # end vehicles' trajectory
         map_start_polyline_idx = len(polyline_spans)
 
-
         # get sub-map around agent location
-
-        lane_ids = am.get_lane_ids_in_xy_bbox(x, y, city_name, query_search_range_manhattan=args.max_distance)
-        local_lane_centerlines = [am.get_lane_segment_centerline(lane_id, city_name) for lane_id in lane_ids]
+        VECTOR_PRE_X = 0
+        VECTOR_PRE_Y = 1
+        VECTOR_X = 2
+        VECTOR_Y = 3
+        lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], self.bound_info, max_distance)
+        local_lane_centerlines = [get_lane_segment_centerline(lane_id, self.lane_info) for lane_id in lane_ids]
         polygons = local_lane_centerlines
 
         polygons = [polygon[:, :2].copy() for polygon in polygons]
-        angle = mapping['angle']
+        angle = self.hero_transform.rotation.yaw  # + 90.0 # TODO: to be confirmed
         for index_polygon, polygon in enumerate(polygons):
             for i, point in enumerate(polygon):
-                point[0], point[1] = rotate(point[0] - x, point[1] - y, angle)
+                point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], angle)
 
         local_lane_centerlines = [polygon for polygon in polygons]
 
@@ -350,32 +372,28 @@ class CarlaSyncModeWithTraffic(object):
             start = len(vectors)
             # semantic_lane 
             lane_id = lane_ids[index_polygon]
-            # lane_segment = am.city_lane_centerlines_dict[city_name][lane_id]
+            lane_segment_dict = city_lane_centerlines_dict(lane_id, self.lane_info)
             # assert_(len(polygon) >= 2)
             for i, point in enumerate(polygon):
                 if i > 0:
-                    vector = [0] * 128 # args.hidden_size
+                    vector = [0] * self.vector_net_hidden_size # args.hidden_size
                     vector[-1 - VECTOR_PRE_X], vector[-1 - VECTOR_PRE_Y] = point_pre[0], point_pre[1]
                     vector[-1 - VECTOR_X], vector[-1 - VECTOR_Y] = point[0], point[1]
                     vector[-5] = 1
                     vector[-6] = i
-
                     vector[-7] = len(polyline_spans)
-
                     # semantic_lane 
-                    vector[-8] = 1 if lane_segment.has_traffic_control else -1
-                    vector[-9] = 1 if lane_segment.turn_direction == 'RIGHT' else \
-                        -1 if lane_segment.turn_direction == 'LEFT' else 0
-                    vector[-10] = 1 if lane_segment.is_intersection else -1
-
+                    vector[-8] = 1 if lane_segment_dict['has_traffic_control'] else -1
+                    vector[-9] = 1 if lane_segment_dict['turn_direction'] == 'RIGHT' else \
+                        -1 if lane_segment_dict['turn_direction'] == 'LEFT' else 0
+                    vector[-10] = 1 if lane_segment_dict['is_intersection'] else -1
                     # pre-point
                     point_pre_pre = (2 * point_pre[0] - point[0], 2 * point_pre[1] - point[1])
-                    
                     if i >= 2:
                         point_pre_pre = polygon[i - 2]
                     vector[-17] = point_pre_pre[0]
                     vector[-18] = point_pre_pre[1]
-
+                    # anppend res
                     vectors.append(vector)
                 point_pre = point
 
@@ -396,8 +414,8 @@ class CarlaSyncModeWithTraffic(object):
         self.world.apply_settings(settings)
         print('\ndestroying %d vehicles' % len(self.vehicles_list))
         self.client.apply_batch([carla.command.DestroyActor(x) for x in self.vehicles_list])
-        if self.spawned_hero is not None:
-            self.spawned_hero.destroy()
+        # if self.spawned_hero is not None:
+        #     self.spawned_hero.destroy()
         time.sleep(0.25)
 
 
@@ -407,6 +425,7 @@ if __name__ == '__main__':
     try:
         while True:
             carla_client.tick()
-            # print(carla_client.get_step_observation())
+            matrix, polyline_spans, map_start_polyline_idx, trajs = carla_client.get_vectornet_input()
+            print(map_start_polyline_idx)
     finally:
         carla_client.destroy_vechicles()
