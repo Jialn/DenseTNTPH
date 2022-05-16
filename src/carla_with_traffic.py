@@ -18,6 +18,41 @@ from utils import get_subdivide_polygons, rotate
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
+def draw_matrix(matrix, polygon_span, map_start_idx):
+    import cv2
+    w, h = 1600, 1600
+    offset = (800, 800)
+    pix_meter = 0.2
+    image = np.zeros((h, w, 3), np.uint8)
+    # draw submap
+    for i in range(map_start_idx,len(polygon_span)):
+        path_span_slice = polygon_span[i]
+        for j in range(path_span_slice.start, path_span_slice.stop):
+            way_pts_info = matrix[j]
+            # traj_pts_info: line_pre[0], line_pre[1], x, y, time_stamp, is_av, is_agent, is_others, len(polyline_spans), i
+            pts = np.array([way_pts_info[-1] / pix_meter + offset[0], way_pts_info[-2] / pix_meter + offset[1]]).astype(np.int)
+            pre_pts = np.array([way_pts_info[-3] / pix_meter + offset[0], way_pts_info[-4] / pix_meter + offset[1]]).astype(np.int)
+            color = (64, 64, 128)
+            cv2.line(image, (pre_pts[0], pre_pts[1]), (pts[0], pts[1]), color, 2)
+            if j == path_span_slice.start:
+                cv2.putText(image, 'path_seg:'+str(i), (pts[0], pts[1]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    # draw trajectory
+    for i in range(map_start_idx):
+        traj_span_slice = polygon_span[i]
+        for j in range(traj_span_slice.start, traj_span_slice.stop):
+            traj_pts_info = matrix[j]
+            # traj_pts_info: line_pre[0], line_pre[1], x, y, time_stamp, is_av, is_agent, is_others, len(polyline_spans), i
+            pts = np.array([traj_pts_info[2] / pix_meter + offset[0], traj_pts_info[3] / pix_meter + offset[1]]).astype(np.int)
+            pre_pts = np.array([traj_pts_info[0] / pix_meter + offset[0], traj_pts_info[1] / pix_meter + offset[1]]).astype(np.int)
+            color = (0, 255, 0)
+            cv2.line(image, (pre_pts[0], pre_pts[1]), (pts[0], pts[1]), color, 2)
+            if j == traj_span_slice.start:
+                cv2.putText(image, 'traj:'+str(i), (pts[0], pts[1]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    cv2.imshow("matrix_vis", image)
+    cv2.waitKey()
+    return image
+
+
 class CarlaSyncModeWithTraffic(object):
     """
     Carla client manager with traffic
@@ -31,7 +66,7 @@ class CarlaSyncModeWithTraffic(object):
         self.all_id = []
         self.client = carla.Client('127.0.0.1', 2000)  # ip and port
         self.client.set_timeout(5.0)
-        self.seed = 115200 # random seed, None
+        self.seed = 80899 # random seed, None
         self.respawn = False
         self.hybrid = False
         self.filterv = 'vehicle.*'
@@ -306,12 +341,13 @@ class CarlaSyncModeWithTraffic(object):
 
     def get_vectornet_input(self):
         two_second_index = 20
-        max_distance = 100
+        max_distance = 50
         polyline_spans = []
         vectors = []
         trajs = []
         map_start_polyline_idx = None
         agent_loc = self.hero_pos_list[two_second_index]
+        angle = (-self.hero_transform.rotation.yaw - 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
 
         def get_pad_vector(li, hidden_size):
             # Pad vector to hidden_size
@@ -339,9 +375,12 @@ class CarlaSyncModeWithTraffic(object):
                 for i, line in enumerate(self.vehicles_pos_list[vhid]):
                     x, y = line[0], line[1]
                     time_stamp = (i - two_second_index) * 0.1
-                    if i > 0:
-                        line_pre = self.vehicles_pos_list[vhid][i-1]
+                    # if i > 0: # For testing
+                    if i > 0 and i < two_second_index:
+                        line_pre = self.vehicles_pos_list[vhid][i-1].copy()
                         # print(x-line_pre[X], y-line_pre[Y])
+                        x, y = rotate(x - agent_loc[0], y - agent_loc[1], angle)
+                        line_pre[0], line_pre[1]= rotate(line_pre[0] - agent_loc[0], line_pre[1] - agent_loc[1], angle)
                         vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
                                 is_agent, is_others, len(polyline_spans), i]
                         vectors.append(get_pad_vector(vector, self.vector_net_hidden_size))
@@ -361,7 +400,6 @@ class CarlaSyncModeWithTraffic(object):
         polygons = local_lane_centerlines
 
         polygons = [polygon[:, :2].copy() for polygon in polygons]
-        angle = self.hero_transform.rotation.yaw  # + 90.0 # TODO: to be confirmed
         for index_polygon, polygon in enumerate(polygons):
             for i, point in enumerate(polygon):
                 point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], angle)
@@ -427,5 +465,6 @@ if __name__ == '__main__':
             carla_client.tick()
             matrix, polyline_spans, map_start_polyline_idx, trajs = carla_client.get_vectornet_input()
             print(map_start_polyline_idx)
+            draw_matrix(matrix, polyline_spans, map_start_polyline_idx)
     finally:
         carla_client.destroy_vechicles()

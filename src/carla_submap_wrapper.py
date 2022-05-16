@@ -3,7 +3,7 @@ import uuid
 import numpy as np
 import carla
 
-lane_sample_resolution = 0.1
+lane_sample_resolution = 0.5
 pixels_per_meter = 2
 raster_size = [ 224, 224 ]
 

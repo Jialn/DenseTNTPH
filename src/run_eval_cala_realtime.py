@@ -17,6 +17,7 @@ import argparse
 import logging
 import os
 from functools import partial
+from cv2 import imshow
 
 import numpy as np
 import torch
@@ -25,7 +26,8 @@ from torch.utils.data import SequentialSampler
 import structs
 import utils
 from modeling.vectornet import VectorNet
-from carla_with_traffic import CarlaSyncModeWithTraffic
+from carla_with_traffic import CarlaSyncModeWithTraffic, draw_matrix
+
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -74,11 +76,22 @@ def do_eval(args):
         break
     print(test_mapping[0].keys())
 
-    for i in range(2):
+    for i in range(64):
         carla_client.tick()
-        # print(test_mapping[0]['matrix'])
-        # test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
-        #     test_mapping[0]['trajs'] = carla_client.get_vectornet_input()
+        # print(test_mapping[0]['matrix'])  # 239
+        print("length of original matrix:")
+        print(len(test_mapping[i]['matrix']))  # 239
+        print("map start idx:")
+        print(test_mapping[i]['map_start_polyline_idx'])
+        print("polyline_spans:")
+        print(test_mapping[i]['polyline_spans'])
+
+        # draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'])
+        test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], \
+            test_mapping[i]['trajs'] = carla_client.get_vectornet_input()
+        draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'])
+
+        # run the model
         pred_trajectory, pred_score, _ = model(test_mapping, device)
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):
