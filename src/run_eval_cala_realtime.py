@@ -71,14 +71,15 @@ def do_eval(args):
     DEs = []
 
     test_mapping = None
+    # only load the first batch for testing
     for batch in eval_dataloader:
         test_mapping = batch
         break
-    print(test_mapping[0].keys())
+    print(test_mapping[-1].keys())
 
     for i in range(64):
         carla_client.tick()
-        # print(test_mapping[0]['matrix'])  # 239
+        # print(test_mapping[-1]['matrix'])  # 239
         print("length of original matrix:")
         print(len(test_mapping[i]['matrix']))  # 239
         print("map start idx:")
@@ -86,13 +87,18 @@ def do_eval(args):
         print("polyline_spans:")
         print(test_mapping[i]['polyline_spans'])
 
-        # draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'])
-        test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], \
-            test_mapping[i]['trajs'] = carla_client.get_vectornet_input()
-        draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'])
+        # use the last one
+        test_mapping[-1]['matrix'], test_mapping[-1]['polyline_spans'], test_mapping[-1]['map_start_polyline_idx'], \
+            test_mapping[-1]['trajs'] = carla_client.get_vectornet_input()
 
         # run the model
         pred_trajectory, pred_score, _ = model(test_mapping, device)
+
+        # visulaize
+        draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], 
+            pred_trajectory=test_mapping[i]['vis.predict_trajs'], win_name="argoverse", wait_key=10)
+        draw_matrix(test_mapping[-1]['matrix'], test_mapping[-1]['polyline_spans'], test_mapping[-1]['map_start_polyline_idx'], 
+            pred_trajectory=test_mapping[-1]['vis.predict_trajs'], wait_key=10)
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):
             assert pred_trajectory[i].shape == (6, args.future_frame_num, 2)

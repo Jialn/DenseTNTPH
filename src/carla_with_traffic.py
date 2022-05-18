@@ -18,38 +18,47 @@ from utils import get_subdivide_polygons, rotate
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
-def draw_matrix(matrix, polygon_span, map_start_idx):
+def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_name="matrix_vis", wait_key=None):
     import cv2
     w, h = 1600, 1600
-    offset = (800, 800)
-    pix_meter = 0.2
+    offset = (w//2, h//2)
+    pix_meter = 0.25
     image = np.zeros((h, w, 3), np.uint8)
+
+    def pts2pix(pts_x, pts_y):
+        new_pts = np.array([- pts_x / pix_meter + offset[0], - pts_y / pix_meter + offset[1]]).astype(np.int)
+        return (new_pts[0], new_pts[1])
+        
     # draw submap
     for i in range(map_start_idx,len(polygon_span)):
         path_span_slice = polygon_span[i]
         for j in range(path_span_slice.start, path_span_slice.stop):
             way_pts_info = matrix[j]
-            # traj_pts_info: line_pre[0], line_pre[1], x, y, time_stamp, is_av, is_agent, is_others, len(polyline_spans), i
-            pts = np.array([way_pts_info[-1] / pix_meter + offset[0], way_pts_info[-2] / pix_meter + offset[1]]).astype(np.int)
-            pre_pts = np.array([way_pts_info[-3] / pix_meter + offset[0], way_pts_info[-4] / pix_meter + offset[1]]).astype(np.int)
-            color = (64, 64, 128)
-            cv2.line(image, (pre_pts[0], pre_pts[1]), (pts[0], pts[1]), color, 2)
+            color = (80, 80, 80)
+            cv2.line(image, pts2pix(way_pts_info[-3], way_pts_info[-4]), pts2pix(way_pts_info[-1], way_pts_info[-2]), color, 2)
             if j == path_span_slice.start:
-                cv2.putText(image, 'path_seg:'+str(i), (pts[0], pts[1]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+                cv2.putText(image, 'path_seg:'+str(i), pts2pix(way_pts_info[-1], way_pts_info[-2]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     # draw trajectory
     for i in range(map_start_idx):
         traj_span_slice = polygon_span[i]
         for j in range(traj_span_slice.start, traj_span_slice.stop):
             traj_pts_info = matrix[j]
+            color = (64, 192, 64)
             # traj_pts_info: line_pre[0], line_pre[1], x, y, time_stamp, is_av, is_agent, is_others, len(polyline_spans), i
-            pts = np.array([traj_pts_info[2] / pix_meter + offset[0], traj_pts_info[3] / pix_meter + offset[1]]).astype(np.int)
-            pre_pts = np.array([traj_pts_info[0] / pix_meter + offset[0], traj_pts_info[1] / pix_meter + offset[1]]).astype(np.int)
-            color = (0, 255, 0)
-            cv2.line(image, (pre_pts[0], pre_pts[1]), (pts[0], pts[1]), color, 2)
+            cv2.line(image, pts2pix(traj_pts_info[0], traj_pts_info[1]), pts2pix(traj_pts_info[2], traj_pts_info[3]), color, 2)
             if j == traj_span_slice.start:
-                cv2.putText(image, 'traj:'+str(i), (pts[0], pts[1]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
-    cv2.imshow("matrix_vis", image)
-    cv2.waitKey()
+                cv2.putText(image, 'traj:'+str(i), pts2pix(traj_pts_info[2], traj_pts_info[3]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    # draw predicted trajectory if not None
+    if pred_trajectory is not None:
+        # pred_trajectory = pred_trajectory.reshape([6, 30, 2])
+        num_traj, num_pts, _ = pred_trajectory.shape
+        for i in range(num_traj):
+            for j in range(1, num_pts-1):
+                color = (64, 64, 255)
+                cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
+
+    cv2.imshow(win_name, image)
+    cv2.waitKey(wait_key)
     return image
 
 
@@ -66,7 +75,7 @@ class CarlaSyncModeWithTraffic(object):
         self.all_id = []
         self.client = carla.Client('127.0.0.1', 2000)  # ip and port
         self.client.set_timeout(5.0)
-        self.seed = 80899 # random seed, None
+        self.seed = 12000 # 80899 # random seed, None
         self.respawn = False
         self.hybrid = False
         self.filterv = 'vehicle.*'
@@ -74,7 +83,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         self.vector_net_hidden_size = 128
-        self.visualize_observation = True
+        self.visualize_observation = False
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
         # print(self.client.get_available_maps())
@@ -347,7 +356,7 @@ class CarlaSyncModeWithTraffic(object):
         trajs = []
         map_start_polyline_idx = None
         agent_loc = self.hero_pos_list[two_second_index]
-        angle = (-self.hero_transform.rotation.yaw - 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
+        angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
 
         def get_pad_vector(li, hidden_size):
             # Pad vector to hidden_size
