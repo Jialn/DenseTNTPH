@@ -22,7 +22,7 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
     import cv2
     w, h = 1600, 1600
     offset = (w//2, h//2)
-    pix_meter = 0.25
+    pix_meter = 0.125
     image = np.zeros((h, w, 3), np.uint8)
 
     def pts2pix(pts_x, pts_y):
@@ -83,7 +83,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         self.vector_net_hidden_size = 128
-        self.visualize_observation = False
+        self.visualize_observation = True
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
         # print(self.client.get_available_maps())
@@ -350,7 +350,7 @@ class CarlaSyncModeWithTraffic(object):
 
     def get_vectornet_input(self):
         two_second_index = 20
-        max_distance = 50
+        max_distance = 35
         polyline_spans = []
         vectors = []
         trajs = []

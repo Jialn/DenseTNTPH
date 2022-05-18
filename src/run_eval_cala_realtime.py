@@ -3,7 +3,7 @@ Run the eval realtime with carla.
 
 Run example:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
-  --output_dir models.densetnt.1 --hidden_size 128 --train_batch_size 64 --use_map \
+  --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map \
   --core_num 16 --use_centerline --distributed_training 1 \
   --other_params \
     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
@@ -75,11 +75,12 @@ def do_eval(args):
     for batch in eval_dataloader:
         test_mapping = batch
         break
-    print(test_mapping[-1].keys())
+    print(test_mapping[0].keys())
 
-    for i in range(64):
+    while True:
         carla_client.tick()
-        # print(test_mapping[-1]['matrix'])  # 239
+        i=0
+        # print(test_mapping[0]['matrix'])  # 239
         print("length of original matrix:")
         print(len(test_mapping[i]['matrix']))  # 239
         print("map start idx:")
@@ -88,17 +89,17 @@ def do_eval(args):
         print(test_mapping[i]['polyline_spans'])
 
         # use the last one
-        test_mapping[-1]['matrix'], test_mapping[-1]['polyline_spans'], test_mapping[-1]['map_start_polyline_idx'], \
-            test_mapping[-1]['trajs'] = carla_client.get_vectornet_input()
+        test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
+            test_mapping[0]['trajs'] = carla_client.get_vectornet_input()
 
         # run the model
         pred_trajectory, pred_score, _ = model(test_mapping, device)
 
         # visulaize
-        draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], 
-            pred_trajectory=test_mapping[i]['vis.predict_trajs'], win_name="argoverse", wait_key=10)
-        draw_matrix(test_mapping[-1]['matrix'], test_mapping[-1]['polyline_spans'], test_mapping[-1]['map_start_polyline_idx'], 
-            pred_trajectory=test_mapping[-1]['vis.predict_trajs'], wait_key=10)
+        #draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], 
+        #    pred_trajectory=test_mapping[i]['vis.predict_trajs'], win_name="argoverse", wait_key=10)
+        draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
+            pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=10)
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):
             assert pred_trajectory[i].shape == (6, args.future_frame_num, 2)
