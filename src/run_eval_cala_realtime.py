@@ -1,7 +1,17 @@
 '''
 Run the eval realtime with carla.
 
-Run example:
+Run example using optimizer:
+python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
+  --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map \
+  --core_num 16 --use_centerline --distributed_training 1 \
+  --other_params \
+    semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
+    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj \
+    --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 \
+    --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ --reuse_temp_file # --visualize
+
+Run example using set-predictor:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
   --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map \
   --core_num 16 --use_centerline --distributed_training 1 \
@@ -59,10 +69,11 @@ def do_eval(args):
     model.load_state_dict(model_recover, strict=False)
 
     # load set_predictor model
-    model_recover = torch.load(args.other_params['set_predict-train_recover'])
-    utils.load_model(model.decoder.set_predict_decoders, model_recover, prefix='decoder.set_predict_decoders.')
-    utils.load_model(model.decoder.set_predict_encoders, model_recover, prefix='decoder.set_predict_encoders.')
-    utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
+    if 'set_predict-train_recover' in args.other_params:
+        model_recover = torch.load(args.other_params['set_predict-train_recover'])
+        utils.load_model(model.decoder.set_predict_decoders, model_recover, prefix='decoder.set_predict_decoders.')
+        utils.load_model(model.decoder.set_predict_encoders, model_recover, prefix='decoder.set_predict_encoders.')
+        utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
 
     model.to(device)
     model.eval()
@@ -71,35 +82,36 @@ def do_eval(args):
     DEs = []
 
     test_mapping = None
-    # only load the first batch for testing
+    realtime_testing_on_argoverse = False # for testing on argoverse dataset
+
+    # load one batch for testing
     for batch in eval_dataloader:
         test_mapping = batch
         break
-    print(test_mapping[0].keys())
+    # do the real-time eval on carla
+    for batch in eval_dataloader:
+        if realtime_testing_on_argoverse:
+            test_mapping = batch
+        print(test_mapping[0].keys())
+        print("length of original matrix:", end=" ")
+        print(len(test_mapping[0]['matrix']))  # 239
+        print("map start idx:", end=" ")
+        print(test_mapping[0]['map_start_polyline_idx'])
+        # print("polyline_spans:")
+        # print(test_mapping[0]['polyline_spans'])
 
-    while True:
-        carla_client.tick()
-        i=0
-        # print(test_mapping[0]['matrix'])  # 239
-        print("length of original matrix:")
-        print(len(test_mapping[i]['matrix']))  # 239
-        print("map start idx:")
-        print(test_mapping[i]['map_start_polyline_idx'])
-        print("polyline_spans:")
-        print(test_mapping[i]['polyline_spans'])
-
-        # use the last one
-        test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
+        # get input from carla
+        if not realtime_testing_on_argoverse:
+            carla_client.tick()
+            test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
             test_mapping[0]['trajs'] = carla_client.get_vectornet_input()
 
         # run the model
         pred_trajectory, pred_score, _ = model(test_mapping, device)
 
         # visulaize
-        #draw_matrix(test_mapping[i]['matrix'], test_mapping[i]['polyline_spans'], test_mapping[i]['map_start_polyline_idx'], 
-        #    pred_trajectory=test_mapping[i]['vis.predict_trajs'], win_name="argoverse", wait_key=10)
         draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
-            pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=10)
+            pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=None) # wait_key=10 or None
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):
             assert pred_trajectory[i].shape == (6, args.future_frame_num, 2)
@@ -112,7 +124,6 @@ dict_keys([
     agent_pred_index', 'two_seconds', 'origin_labels', 'angle', 'trajs', 'agents', 'map_start_polyline_idx', 'polygons', 
     'goals_2D', 'goals_2D_labels', 'stage_one_label', 'matrix', 'labels', 'polyline_spans', 'labels_is_valid', 'eval_time', 
     'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs'])
-
 '''
 
 

@@ -3,7 +3,8 @@ import uuid
 import numpy as np
 import carla
 
-lane_sample_resolution = 0.5
+lane_sample_resolution = 1.0
+max_lane_sample_distance_when_straight = 5.0
 pixels_per_meter = 2
 raster_size = [ 224, 224 ]
 
@@ -101,6 +102,10 @@ def list_wpt2array(list_wpt):
         loc_array[i, 2] = carla_wpt.transform.location.z
     return loc_array
 
+def distance_wp(wp1, wp2):
+    pos1 = np.array([wp1.transform.location.x, wp1.transform.location.y])
+    pos2 = np.array([wp2.transform.location.x, wp2.transform.location.y])
+    return np.linalg.norm(pos1-pos2)
 
 def get_all_lane_info(carla_map):
     """
@@ -118,6 +123,13 @@ def get_all_lane_info(carla_map):
     # sort by altitude
     topology = sorted(topology, key=lambda w: w.transform.location.z)
 
+    def should_remove_wp(wp0, wp1, wp2):
+        if abs(wp0.transform.rotation.yaw - wp1.transform.rotation.yaw) < 1.0 and \
+            abs(wp1.transform.rotation.yaw - wp2.transform.rotation.yaw) < 1.0 and \
+            distance_wp(wp0, wp2) <  max_lane_sample_distance_when_straight:
+            return True
+        return False
+
     # loop all waypoints to get lane information
     for (i, waypoint) in enumerate(topology):
         # unique id for each lane
@@ -133,6 +145,9 @@ def get_all_lane_info(carla_map):
         # looping until next lane
         while nxt.road_id == waypoint.road_id \
                 and nxt.lane_id == waypoint.lane_id:
+            if len(waypoints) > 3:
+                if should_remove_wp(waypoints[-2], waypoints[-1], nxt):
+                    waypoints.pop()
             waypoints.append(nxt)
             nxt = nxt.next(lane_sample_resolution)[0]
 

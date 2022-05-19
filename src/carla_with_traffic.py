@@ -36,6 +36,7 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
             way_pts_info = matrix[j]
             color = (80, 80, 80)
             cv2.line(image, pts2pix(way_pts_info[-3], way_pts_info[-4]), pts2pix(way_pts_info[-1], way_pts_info[-2]), color, 2)
+            cv2.circle(image, pts2pix(way_pts_info[-1], way_pts_info[-2]), 2, (0, 128, 128), thickness=-1)
             if j == path_span_slice.start:
                 cv2.putText(image, 'path_seg:'+str(i), pts2pix(way_pts_info[-1], way_pts_info[-2]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     # draw trajectory
@@ -83,7 +84,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         self.vector_net_hidden_size = 128
-        self.visualize_observation = True
+        self.visualize_observation = False
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
         # print(self.client.get_available_maps())
@@ -229,7 +230,7 @@ class CarlaSyncModeWithTraffic(object):
             self.hero_transform = self.hero_actor.get_transform()
             # Save it in order to destroy it when closing program
             self.spawned_hero = self.hero_actor
-            self.vehicles_list.append(self.hero_actor.id)
+            self.vehicles_list.insert(0, self.hero_actor.id)
 
     def _split_actors(self):
         vehicles, traffic_lights, speed_limits, walkers = [], [], [], []
@@ -350,7 +351,8 @@ class CarlaSyncModeWithTraffic(object):
 
     def get_vectornet_input(self):
         two_second_index = 20
-        max_distance = 35
+        min_distance_submap = 35
+        max_distance_for_agents = 70
         polyline_spans = []
         vectors = []
         trajs = []
@@ -369,7 +371,7 @@ class CarlaSyncModeWithTraffic(object):
         for vhid in range(len(self.vehicles_pos_list)):
             vh_loc = self.vehicles_pos_list[vhid][two_second_index]
             # print(vh_loc, end=",")
-            if abs(vh_loc[0] - agent_loc[0]) < max_distance and abs(vh_loc[1] - agent_loc[1]) < max_distance:
+            if abs(vh_loc[0] - agent_loc[0]) < max_distance_for_agents and abs(vh_loc[1] - agent_loc[1]) < max_distance_for_agents:
                 start = len(vectors)
                 # traj for denseTNT visualize:
                 traj = []
@@ -404,7 +406,7 @@ class CarlaSyncModeWithTraffic(object):
         VECTOR_PRE_Y = 1
         VECTOR_X = 2
         VECTOR_Y = 3
-        lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], self.bound_info, max_distance)
+        lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], self.bound_info, min_distance_submap)
         local_lane_centerlines = [get_lane_segment_centerline(lane_id, self.lane_info) for lane_id in lane_ids]
         polygons = local_lane_centerlines
 
