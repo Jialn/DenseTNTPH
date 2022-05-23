@@ -82,7 +82,8 @@ def do_eval(args):
     DEs = []
 
     test_mapping = None
-    realtime_testing_on_argoverse = False # for testing on argoverse dataset
+    run_testing_on_argoverse = True # for testing on argoverse dataset
+    run_testing_on_carla = True # for testing on argoverse dataset
 
     # load one batch for testing
     for batch in eval_dataloader:
@@ -90,28 +91,30 @@ def do_eval(args):
         break
     # do the real-time eval on carla
     for batch in eval_dataloader:
-        if realtime_testing_on_argoverse:
-            test_mapping = batch
         print(test_mapping[0].keys())
         print("length of original matrix:", end=" ")
         print(len(test_mapping[0]['matrix']))  # 239
         print("map start idx:", end=" ")
         print(test_mapping[0]['map_start_polyline_idx'])
         # print("polyline_spans:")
-        # print(test_mapping[0]['polyline_spans'])
+        # print(test_mapping['polyline_spans'])
 
-        # get input from carla
-        if not realtime_testing_on_argoverse:
+        if run_testing_on_carla:
+            # get input from carla
             carla_client.tick()
             test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], \
             test_mapping[0]['trajs'] = carla_client.get_vectornet_input()
+            # run the model
+            pred_trajectory, pred_score, _ = model(test_mapping, device)
+            # visulaize
+            draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
+                pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=10) # wait_key=10 or None
 
-        # run the model
-        pred_trajectory, pred_score, _ = model(test_mapping, device)
+        if run_testing_on_argoverse:
+            pred_trajectory, pred_score, _ = model(batch, device)
+            draw_matrix(batch[0]['matrix'], batch[0]['polyline_spans'], batch[0]['map_start_polyline_idx'], 
+                pred_trajectory=batch[0]['vis.predict_trajs'], wait_key=None, win_name='argo_vis') # wait_key=10 or None
 
-        # visulaize
-        draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
-            pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=None) # wait_key=10 or None
         batch_size = pred_trajectory.shape[0]
         for i in range(batch_size):
             assert pred_trajectory[i].shape == (6, args.future_frame_num, 2)
