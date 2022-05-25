@@ -103,8 +103,7 @@ class Decoder(nn.Module):
             return stage_one_scores
 
         stage_one_scores = get_stage_one_scores()
-        # MARK JT: to check again
-        # assert len(stage_one_scores) == len(mapping[i]['polygons'])
+        assert len(stage_one_scores) == len(mapping[i]['polygons'])
         mapping[i]['stage_one_scores'] = stage_one_scores
         # print('stage_one_scores', stage_one_scores.requires_grad)
         loss[i] += F.nll_loss(stage_one_scores.unsqueeze(0),

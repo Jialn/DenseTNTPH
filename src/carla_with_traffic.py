@@ -14,7 +14,7 @@ from numpy import random
 import numpy as np
 import math
 from carla_visualize import *
-from utils import get_subdivide_polygons, rotate
+from utils import rotate, get_subdivide_points, get_dis
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
@@ -76,7 +76,7 @@ class CarlaSyncModeWithTraffic(object):
         self.all_id = []
         self.client = carla.Client('127.0.0.1', 2000)  # ip and port
         self.client.set_timeout(5.0)
-        self.seed = 12000 # 80899 # random seed, None
+        self.seed = 16000 # 80899 # random seed, None
         self.respawn = False
         self.hybrid = False
         self.filterv = 'vehicle.*'
@@ -349,7 +349,7 @@ class CarlaSyncModeWithTraffic(object):
         if self.visualize_observation:
             self.render()
 
-    def get_vectornet_input(self):
+    def get_vectornet_input(self, mapping):
         two_second_index = 20
         min_distance_submap = 35
         max_distance_for_agents = 70
@@ -365,9 +365,11 @@ class CarlaSyncModeWithTraffic(object):
             assert len(li) <= hidden_size
             li.extend([0] * (hidden_size - len(li)))
             return li
+        
+        def get_hash(point):
+            return round((point[0] + 500) * 100) * 1000000 + round((point[1] + 500) * 100)
 
         # get vehicles' trajectory
-        # print(agent_loc)
         for vhid in range(len(self.vehicles_pos_list)):
             vh_loc = self.vehicles_pos_list[vhid][two_second_index]
             # print(vh_loc, end=",")
@@ -400,6 +402,9 @@ class CarlaSyncModeWithTraffic(object):
                 polyline_spans.append([start, end])
             # end vehicles' trajectory
         map_start_polyline_idx = len(polyline_spans)
+        origin_labels = np.zeros([30, 2])
+        for i, line in enumerate(self.vehicles_pos_list[0][20:50]):
+            origin_labels[i][0], origin_labels[i][1] = line[0], line[1]
 
         # get sub-map around agent location
         VECTOR_PRE_X = 0
@@ -409,14 +414,42 @@ class CarlaSyncModeWithTraffic(object):
         lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], self.bound_info, min_distance_submap)
         local_lane_centerlines = [get_lane_segment_centerline(lane_id, self.lane_info) for lane_id in lane_ids]
         polygons = local_lane_centerlines
-
         polygons = [polygon[:, :2].copy() for polygon in polygons]
         for index_polygon, polygon in enumerate(polygons):
             for i, point in enumerate(polygon):
                 point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], angle)
-
         local_lane_centerlines = [polygon for polygon in polygons]
 
+        # goals_2D and labels
+        points = []
+        visit = {}
+        for index_polygon, polygon in enumerate(polygons):
+            for i, point in enumerate(polygon):
+                hash = get_hash(point)
+                if hash not in visit:
+                    visit[hash] = True
+                    points.append(point)
+            subdivide_points = get_subdivide_points(polygon)
+            points.extend(subdivide_points)
+            subdivide_points = get_subdivide_points(polygon, include_self=True)
+        mapping['goals_2D'] = np.array(points)
+        
+        labels = []
+        for i, line in enumerate(self.vehicles_pos_list[0][20:50]):
+            labels.append(line[0])
+            labels.append(line[1])
+        point_label = np.array(labels[-2:])
+        mapping['goals_2D_labels'] = np.argmin(get_dis(mapping['goals_2D'], point_label))
+
+        stage_one_label = 0
+        min_dis = 10000.0
+        for i, polygon in enumerate(polygons):
+            temp = np.min(get_dis(polygon, point_label))
+            if temp < min_dis:
+                min_dis = temp
+                stage_one_label = i
+        mapping['stage_one_label'] = stage_one_label
+        
         for index_polygon, polygon in enumerate(polygons):
             start = len(vectors)
             # semantic_lane 
@@ -428,9 +461,7 @@ class CarlaSyncModeWithTraffic(object):
                     vector = [0] * self.vector_net_hidden_size # args.hidden_size
                     vector[-1 - VECTOR_PRE_X], vector[-1 - VECTOR_PRE_Y] = point_pre[0], point_pre[1]
                     vector[-1 - VECTOR_X], vector[-1 - VECTOR_Y] = point[0], point[1]
-                    vector[-5] = 1
-                    vector[-6] = i
-                    vector[-7] = len(polyline_spans)
+                    vector[-5], vector[-6], vector[-7] = 1, i, len(polyline_spans)
                     # semantic_lane 
                     vector[-8] = 1 if lane_segment_dict['has_traffic_control'] else -1
                     vector[-9] = 1 if lane_segment_dict['turn_direction'] == 'RIGHT' else \
@@ -438,22 +469,25 @@ class CarlaSyncModeWithTraffic(object):
                     vector[-10] = 1 if lane_segment_dict['is_intersection'] else -1
                     # pre-point
                     point_pre_pre = (2 * point_pre[0] - point[0], 2 * point_pre[1] - point[1])
-                    if i >= 2:
-                        point_pre_pre = polygon[i - 2]
-                    vector[-17] = point_pre_pre[0]
-                    vector[-18] = point_pre_pre[1]
+                    if i >= 2: point_pre_pre = polygon[i - 2]
+                    vector[-17], vector[-18] = point_pre_pre[0], point_pre_pre[1]
                     # anppend res
                     vectors.append(vector)
                 point_pre = point
-
             end = len(vectors)
-            if start < end:
-                polyline_spans.append([start, end])
+            if start < end: polyline_spans.append([start, end])
 
-        # ready to output
-        matrix = np.array(vectors)
-        polyline_spans=[slice(each[0], each[1]) for each in polyline_spans]
-        return matrix, polyline_spans, map_start_polyline_idx, trajs
+        # update dict
+        mapping.update(dict(
+            matrix=np.array(vectors),
+            labels=np.array(labels).reshape([30, 2]),
+            polyline_spans=[slice(each[0], each[1]) for each in polyline_spans],
+            labels_is_valid=np.ones(30, dtype=np.int64),
+            eval_time=30, cent_x=agent_loc[0], cent_y=agent_loc[1],
+            map_start_polyline_idx=map_start_polyline_idx, polygons=polygons,
+            traj=traj, angle=angle, origin_labels=origin_labels,
+            file_name='carla'
+        ))
 
     def destroy_vechicles(self):
         settings = self.world.get_settings()
@@ -472,10 +506,10 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     carla_client = CarlaSyncModeWithTraffic()
     try:
+        mapping = {}
         while True:
             carla_client.tick()
-            matrix, polyline_spans, map_start_polyline_idx, trajs = carla_client.get_vectornet_input()
-            print(map_start_polyline_idx)
-            draw_matrix(matrix, polyline_spans, map_start_polyline_idx)
+            carla_client.get_vectornet_input(mapping)
+            draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'])
     finally:
         carla_client.destroy_vechicles()

@@ -17,3 +17,4 @@ models.densetnt.1/**/*
 __pycache__/carla_visualize.cpython-37.pyc
 bound_info.npy
 lane_info.npy
+.vscode/settings.json
