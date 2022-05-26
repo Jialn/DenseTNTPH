@@ -84,7 +84,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         self.vector_net_hidden_size = 128
-        self.visualize_observation = False
+        self.visualize_carla = True
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
         # print(self.client.get_available_maps())
@@ -94,7 +94,7 @@ class CarlaSyncModeWithTraffic(object):
         self.actors_with_transforms = None
         # self.world.unload_map_layer(carla.MapLayer.Buildings)
         self.map = self.world.get_map()
-        if self.visualize_observation:
+        if self.visualize_carla:
             self.width, self.height = 1920, 1080
             pygame.init()
             self.display = pygame.display.set_mode(
@@ -298,7 +298,6 @@ class CarlaSyncModeWithTraffic(object):
         # blit surfaces
         surfaces = ((self.map_image.surface, (0, 0)),
                     (self.actors_surface, (0, 0)))
-
         angle = self.hero_transform.rotation.yaw + 90.0
         hero_location_screen = self.map_image.world_to_pixel(self.hero_transform.location)
         hero_front = self.hero_transform.get_forward_vector()
@@ -310,20 +309,15 @@ class CarlaSyncModeWithTraffic(object):
                                     self.hero_surface.get_width(),
                                     self.hero_surface.get_height())
         self.clip_surfaces(clipping_rect)
-
         Util.blits(self.result_surface, surfaces)
-
-        #self.border_round_surface.set_clip(clipping_rect)
-
+        self.border_round_surface.set_clip(clipping_rect)
         self.hero_surface.fill(COLOR_ALUMINIUM_4)
         self.hero_surface.blit(self.result_surface, (-translation_offset[0], -translation_offset[1]))
         rotated_result_surface = pygame.transform.rotozoom(self.hero_surface, angle, 0.9).convert()
-
         center = (display.get_width() / 2, display.get_height() / 2)
         rotation_pivot = rotated_result_surface.get_rect(center=center)
         display.blit(rotated_result_surface, rotation_pivot)
-
-        # display.blit(self.border_round_surface, (0, 0))
+        display.blit(self.border_round_surface, (0, 0))
         pygame.display.flip()
 
     def tick(self):
@@ -346,7 +340,7 @@ class CarlaSyncModeWithTraffic(object):
         if self.hero_actor is not None:
             self.hero_transform = self.hero_actor.get_transform()
         # visualize
-        if self.visualize_observation:
+        if self.visualize_carla:
             self.render()
 
     def get_vectornet_input(self, mapping):
@@ -510,6 +504,6 @@ if __name__ == '__main__':
         while True:
             carla_client.tick()
             carla_client.get_vectornet_input(mapping)
-            draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'])
+            draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
     finally:
         carla_client.destroy_vechicles()

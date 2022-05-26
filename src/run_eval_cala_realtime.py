@@ -81,9 +81,9 @@ def do_eval(args):
     '''
     mapping keys:
         # already impl:
-        'cent_x', 'cent_y', 'angle', 'trajs', 'agents', 'map_start_polyline_idx', 'polygons', 
+        'cent_x', 'cent_y', 'angle', 'trajs', 'map_start_polyline_idx', 'polygons', 
         'goals_2D', 'matrix', 'polyline_spans', 'origin_labels',  'goals_2D_labels', 'stage_one_label',  'labels', 'labels_is_valid', 'eval_time'
-        # not in dataset infer: 'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs', 'file_name'
+        # not in dataset infer: 'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs', 'file_name', 'agents'
         # not used outside dataset construct: 'start_time' , 'two_seconds', 'city_name', 'agent_pred_index'
     '''
     test_mapping = [{}]*args.eval_batch_size
