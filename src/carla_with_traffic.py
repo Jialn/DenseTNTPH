@@ -54,7 +54,7 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
         # pred_trajectory = pred_trajectory.reshape([6, 30, 2])
         num_traj, num_pts, _ = pred_trajectory.shape
         for i in range(num_traj):
-            for j in range(1, num_pts-1):
+            for j in range(1, num_pts): # num_pts-1
                 color = (64, 64, 255)
                 cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
 
@@ -92,6 +92,7 @@ class CarlaSyncModeWithTraffic(object):
         self.hero_actor = None
         self.spawned_hero = None
         self.actors_with_transforms = None
+        self.tick_cnt = 0
         # self.world.unload_map_layer(carla.MapLayer.Buildings)
         self.map = self.world.get_map()
         if self.visualize_carla:
@@ -342,8 +343,17 @@ class CarlaSyncModeWithTraffic(object):
         # visualize
         if self.visualize_carla:
             self.render()
+        self.tick_cnt += 1
 
     def get_vectornet_input(self, mapping):
+        '''
+        mapping keys:
+            # already impl:
+            'cent_x', 'cent_y', 'angle', 'trajs', 'map_start_polyline_idx', 'polygons', 
+            'goals_2D', 'matrix', 'polyline_spans', 'origin_labels',  'goals_2D_labels', 'stage_one_label',  'labels', 'labels_is_valid', 'eval_time'
+            # not in dataset infer: 'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs', 'file_name', 'agents'
+            # not used outside dataset construct: 'start_time' , 'two_seconds', 'city_name', 'agent_pred_index'
+        '''
         two_second_index = 20
         min_distance_submap = 35
         max_distance_for_agents = 70
@@ -480,7 +490,7 @@ class CarlaSyncModeWithTraffic(object):
             eval_time=30, cent_x=agent_loc[0], cent_y=agent_loc[1],
             map_start_polyline_idx=map_start_polyline_idx, polygons=polygons,
             traj=traj, angle=angle, origin_labels=origin_labels,
-            file_name='carla'
+            file_name='carla_'+str(self.tick_cnt)
         ))
 
     def destroy_vechicles(self):
@@ -496,14 +506,32 @@ class CarlaSyncModeWithTraffic(object):
         time.sleep(0.25)
 
 
+save_offline_data = True # if True, will save mapping data as npy and trajectory as csv file
+offline_data_path = './carla_offline_data'
+offline_data_num = 20 * 1000 # 20K
+
+
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     carla_client = CarlaSyncModeWithTraffic()
     try:
-        mapping = {}
-        while True:
-            carla_client.tick()
-            carla_client.get_vectornet_input(mapping)
-            draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
+        if save_offline_data:
+            # TODO: save lane_info and bound_info as npy
+            # carla_client.bound_info, carla_client.lane_info
+            mapping = {}
+            for i in range(offline_data_num):
+                carla_client.tick()
+                carla_client.get_vectornet_input(mapping)
+                draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
+                # TODO: save trajectory as csv file
+                # carla_client.vehicles_pos_list should do the work, the first one is agent and others are others
+                pass
+                # after this part done, change dataset_carla.py accrodingly
+        else:
+            mapping = {}
+            while True:
+                carla_client.tick()
+                carla_client.get_vectornet_input(mapping)
+                draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
     finally:
         carla_client.destroy_vechicles()

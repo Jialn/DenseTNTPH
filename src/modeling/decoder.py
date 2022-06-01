@@ -1,3 +1,48 @@
+"""
+Outline of decoder:
+decoder(mapping, batch_size, lane_states_batch, inputs, inputs_lengths, hidden_states, device),定义在Decoder.forward(mapping: List[Dict], batch_size, lane_states_batch: List[Tensor], inputs: Tensor,inputs_lengths: List[int], hidden_states: Tensor, device)函数:
+    初始化保存loss相关的变量
+    从mapping中提取goals_2D，goals_2D是从地图车道数据中构建的采样点坐标（代表车道周边区域热力图）
+    调用goals_2D_per_example(i, goals_2D, mapping, lane_states_batch, inputs, inputs_lengths, hidden_states, labels, labels_is_valid, device, loss, DE)
+        从mapping[labels]获取gt_points，即30个轨迹点的xy坐标
+        调用goals_2D_per_example_stage_one(i, mapping, lane_states_batch, ..., loss)
+            计算StageOne得分：hidden_states(即global_graph的输出)经过CrossAttention和一个MLP decoder得到stage_one_scores，是一个list，长度和map里面的lane的数量一致,实际上代表车道线的得分.
+            用stage_one_label计算loss（第一个loss），stage_one_label是所有车道中心线里面距离轨迹末端点最近的那个车道线的index
+            筛选得分较高的车道，阈值stage_one_dynamic，默认0.95，动态的stage_one topk数量，表示只统计前95%得分的车道
+            返回stage_one_topk_ids，表示第一阶段车道线评分高的几个车道index
+        get_scores(goals_2D_tensor, *get_scores_inputs)获取goals2D热力图的得分，stage_one是考虑车道线得分，这里是goals2D热力图，两个有差别
+            先经过PointSubGraph（goals_2D经过3层MLP，后2层会concat进来前面global_graph的编码hidden_states）得到goals_2D_hidden
+            goals_2D_hidden和inputs经过一个CrossAttention，得到goals_2D_hidden_attention
+            goals_2D_hidden和stage_one_topk也经过一个CrossAttention，得到stage_one_goals_2D_hidden_attention
+            goals_2D_hidden，stage_one_topk和stage_one_goals_2D_hidden_attention经过stage_one_goals_2D_decoder然后送进socres解码器stage_one_goals_2D_decoder
+                这个decoder跟前面的stage_one_decoder类似，一个MLP decoder
+            解码得到的scores经过softmax然后取log后返回
+        goals_2D_per_example_lazy_points() 综合考虑goals2D的valuemap得分和车道线得分，获取scores, highest_goal, goals_2D可视化结果
+            这个函数通过utils.get_neighbour_points获取得分较高的vlauemap里面的点周边的点
+            然后concat起来新的点和原来的点，再送进去get_scores计算一次
+            备注：不清楚作用，论文里面似乎没讲这个，直观理解是对得分较高的区域附近点进行扩充，让其超过原来车道附近，有更大的区域
+        如果在train，使用goals_2D_per_example_calc_loss函数计算loss，stage_one_label的loss前面已经计算，这里主要是轨迹生成loss和得分loss（第2，3个loss）
+            F.smooth_l1_loss(predict_traj, torch.tensor(gt_points, dtype=torch.float, device=device), reduction='none')
+            F.nll_loss(scores.unsqueeze(0), torch.tensor([mapping[i]['goals_2D_labels']], device=device)
+        保存可视化的相关变量
+        如果set_predict，使用神经网络根据goals_2D和scores选择goal，否则使用优化方法select_goals_by_NMS。
+        run_set_predict(goals_2D, scores, mapping, device, loss, i):
+            即替代优化的方法，用神经网络去预测goalset
+            把xy坐标构成的goals_2D加上一个得分维度，得到vectors_3D(x,y,score)，然后送进去2层3*128，128*128的MLP得到points_feature
+            然后points_feature送进去k个set-predictor的encoder和decoder，encoder就是GlobalGraphRes,decoder就是DecoderResCat
+            每个decoder都会precit出6个xy坐标decoding[1:].view([6, 2])和得分decoding[0]，总共有k个
+            如果在do train，这里还有第四个loss： loss[i] += 2.0 * F.l1_loss(predicts[min_cost_idx], torch.tensor(dynamic_label, device=device, dtype=torch.float))
+            这里的dynamic_label通过utils_cython.set_predict_next_step计算得来，有一个参数set_predict-MRratio控制优化MissRate还是优化ADE/FDE
+            最后根据得分和一些其他规则筛选goal，保存到mapping[i]['set_predict_ans_points']
+    if do_eval: goals_2D_eval
+        根据上面输出的结果选择出goal：pred_goals_batch = [mapping[i]['set_predict_ans_points']
+        complete_traj，即根据goal完成trajectory：
+            根据goal生成轨迹:goals_2D_mlps complete_traj_cross_attention complete_traj_decoder得到轨迹predict_trajs
+            对predict_trajs经过坐标变换，由待预测车辆的第一人称相对坐标转换回绝对坐标，用于后续评估
+    if visualize: 调用visualize_goals_2D，保存可视化的图片
+
+"""
+
 from typing import Dict, List, Tuple, NamedTuple, Any
 
 import numpy as np
