@@ -106,7 +106,7 @@ def do_eval(args):
     model.to(device)
     model.eval()
 
-    run_testing_on_argoverse = True # for testing on argoverse dataset, only for compare purpose
+    run_testing_on_argoverse = False # for testing on argoverse dataset, only for compare purpose
     run_testing_on_carla = True # for testing on carla
 
     if run_testing_on_argoverse:
@@ -137,7 +137,7 @@ def do_eval(args):
             pred_trajectory, pred_score, _ = model(test_mapping, device)
             # visulaize
             draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
-                pred_trajectory=test_mapping[0]['vis.predict_trajs'], wait_key=10, win_name='carla_vis') # wait_key=10 or None
+                pred_trajectory=test_mapping[0]['vis.predict_trajs'], label=test_mapping[0]['labels'], wait_key=10, win_name='carla_vis') # wait_key=10 or None
             print("length of original matrix:" + str(len(test_mapping[0]['matrix'])))
             print("map start idx:" + str(test_mapping[0]['map_start_polyline_idx']))
             # print("polyline_spans:" + str(test_mapping['polyline_spans']))
@@ -152,7 +152,7 @@ def do_eval(args):
             batch = argoverse_batch[loop_cnt%len(argoverse_batch)]
             pred_trajectory, pred_score, _ = model(batch, device)
             draw_matrix(batch[0]['matrix'], batch[0]['polyline_spans'], batch[0]['map_start_polyline_idx'], 
-                pred_trajectory=batch[0]['vis.predict_trajs'], wait_key=None, win_name='argo_vis') # wait_key=10 or None
+                pred_trajectory=batch[0]['vis.predict_trajs'], label=batch[0]['labels'], wait_key=None, win_name='argo_vis') # wait_key=10 or None
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))

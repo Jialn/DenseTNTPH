@@ -18,7 +18,7 @@ from utils import rotate, get_subdivide_points, get_dis
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
-def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_name="matrix_vis", wait_key=None):
+def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, label=None, win_name="matrix_vis", wait_key=None):
     import cv2
     w, h = 1600, 1600
     offset = (w//2, h//2)
@@ -36,7 +36,7 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
             way_pts_info = matrix[j]
             color = (80, 80, 80)
             cv2.line(image, pts2pix(way_pts_info[-3], way_pts_info[-4]), pts2pix(way_pts_info[-1], way_pts_info[-2]), color, 2)
-            cv2.circle(image, pts2pix(way_pts_info[-1], way_pts_info[-2]), 2, (0, 128, 128), thickness=-1)
+            cv2.circle(image, pts2pix(way_pts_info[-1], way_pts_info[-2]), 2, (180, 180, 180), thickness=-1)
             if j == path_span_slice.start:
                 cv2.putText(image, 'path_seg:'+str(i), pts2pix(way_pts_info[-1], way_pts_info[-2]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     # draw trajectory
@@ -44,7 +44,7 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
         traj_span_slice = polygon_span[i]
         for j in range(traj_span_slice.start, traj_span_slice.stop):
             traj_pts_info = matrix[j]
-            color = (64, 192, 64)
+            color = (64, 180, 165)
             # traj_pts_info: line_pre[0], line_pre[1], x, y, time_stamp, is_av, is_agent, is_others, len(polyline_spans), i
             cv2.line(image, pts2pix(traj_pts_info[0], traj_pts_info[1]), pts2pix(traj_pts_info[2], traj_pts_info[3]), color, 2)
             if j == traj_span_slice.start:
@@ -55,8 +55,16 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, win_n
         num_traj, num_pts, _ = pred_trajectory.shape
         for i in range(num_traj):
             for j in range(1, num_pts): # num_pts-1
-                color = (64, 64, 255)
+                color = (32, 64, 165)
                 cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
+            cv2.circle(image, pts2pix(pred_trajectory[i,-1,0], pred_trajectory[i,-1,1]), 2, (0, 0, 255), thickness=-1)
+    if label is not None:
+        num_pts, _ = label.shape
+        print(label)
+        for j in range(1, num_pts): # num_pts-1
+            color = (32, 165, 64)
+            cv2.line(image, pts2pix(label[j-1,0], label[j-1,1]), pts2pix(label[j,0], label[j,1]), color, 2)
+        cv2.circle(image, pts2pix(label[-1,0], label[-1,1]), 2, (0, 255, 0), thickness=-1)
 
     cv2.imshow(win_name, image)
     cv2.waitKey(wait_key)
@@ -440,8 +448,9 @@ class CarlaSyncModeWithTraffic(object):
         
         labels = []
         for i, line in enumerate(self.vehicles_pos_list[0][20:50]):
-            labels.append(line[0])
-            labels.append(line[1])
+            label_x, label_y = rotate(line[0] - agent_loc[0], line[1] - agent_loc[1], angle)
+            labels.append(label_x)
+            labels.append(label_y)
         point_label = np.array(labels[-2:])
         mapping['goals_2D_labels'] = np.argmin(get_dis(mapping['goals_2D'], point_label))
 
