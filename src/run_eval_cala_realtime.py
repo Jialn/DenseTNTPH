@@ -59,12 +59,6 @@ def eval_instance_carla(batch_size, args, pred, mapping, file2pred, file2labels,
                 DE[i][j] = np.sqrt((origin_labels[j][0] - pred[i, 0, j, 0]) ** 2 + (
                         origin_labels[j][1] - pred[i, 0, j, 1]) ** 2)
         DEs.append(DE)
-        miss_rate = 0.0
-        if 0 in utils.method2FDEs:
-            FDEs = utils.method2FDEs[0]
-            miss_rate = np.sum(np.array(FDEs) > 2.0) / len(FDEs)
-        print("DE:" + str(DE), end=", ")
-        print("MissRate:" + str(miss_rate))
 
 
 def post_eval(args, file2pred, file2labels, DEs):
@@ -136,8 +130,7 @@ def do_eval(args):
             # run the model
             pred_trajectory, pred_score, _ = model(test_mapping, device)
             # visulaize
-            draw_matrix(test_mapping[0]['matrix'], test_mapping[0]['polyline_spans'], test_mapping[0]['map_start_polyline_idx'], 
-                pred_trajectory=test_mapping[0]['vis.predict_trajs'], label=test_mapping[0]['labels'], wait_key=10, win_name='carla_vis') # wait_key=10 or None
+            draw_matrix(test_mapping[0], wait_key=10, win_name='carla_vis') # wait_key=10 or None
             print("length of original matrix:" + str(len(test_mapping[0]['matrix'])))
             print("map start idx:" + str(test_mapping[0]['map_start_polyline_idx']))
             # print("polyline_spans:" + str(test_mapping['polyline_spans']))
@@ -151,13 +144,11 @@ def do_eval(args):
         if run_testing_on_argoverse:
             batch = argoverse_batch[loop_cnt%len(argoverse_batch)]
             pred_trajectory, pred_score, _ = model(batch, device)
-            draw_matrix(batch[0]['matrix'], batch[0]['polyline_spans'], batch[0]['map_start_polyline_idx'], 
-                pred_trajectory=batch[0]['vis.predict_trajs'], label=batch[0]['labels'], wait_key=None, win_name='argo_vis') # wait_key=10 or None
+            draw_matrix(batch[0], wait_key=None, win_name='argo_vis')
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))
-        if loop_cnt > 200:
-            break
+        if loop_cnt > 300: break
     post_eval(args, file2pred, file2labels, DEs)
 
 def main():

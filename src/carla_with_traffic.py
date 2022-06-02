@@ -9,17 +9,17 @@ python src/carla_with_traffic.py
 import time
 import carla
 import logging
-import pygame
 from numpy import random
 import numpy as np
 import math
-from carla_visualize import *
 from utils import rotate, get_subdivide_points, get_dis
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
-def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, label=None, win_name="matrix_vis", wait_key=None):
+def draw_matrix(mapping, win_name="matrix_vis", wait_key=None):
     import cv2
+    draw_goals_2D = False
+    matrix, polygon_span, map_start_idx = mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], 
     w, h = 1600, 1600
     offset = (w//2, h//2)
     pix_meter = 0.125
@@ -29,6 +29,13 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, label
         new_pts = np.array([- pts_x / pix_meter + offset[0], - pts_y / pix_meter + offset[1]]).astype(np.int)
         return (new_pts[0], new_pts[1])
         
+    if draw_goals_2D:
+        goals_2d = mapping['goals_2D']
+        print(goals_2d.shape)
+        num_goals, _ = goals_2d.shape
+        print(goals_2d)
+        for j in range(num_goals):
+            cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (64, 64, 64), thickness=-1)
     # draw submap
     for i in range(map_start_idx,len(polygon_span)):
         path_span_slice = polygon_span[i]
@@ -50,7 +57,8 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, label
             if j == traj_span_slice.start:
                 cv2.putText(image, 'traj:'+str(i), pts2pix(traj_pts_info[2], traj_pts_info[3]), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     # draw predicted trajectory if not None
-    if pred_trajectory is not None:
+    if "vis.predict_trajs" in mapping:
+        pred_trajectory = mapping['vis.predict_trajs']
         # pred_trajectory = pred_trajectory.reshape([6, 30, 2])
         num_traj, num_pts, _ = pred_trajectory.shape
         for i in range(num_traj):
@@ -58,18 +66,23 @@ def draw_matrix(matrix, polygon_span, map_start_idx, pred_trajectory=None, label
                 color = (32, 64, 165)
                 cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
             cv2.circle(image, pts2pix(pred_trajectory[i,-1,0], pred_trajectory[i,-1,1]), 2, (0, 0, 255), thickness=-1)
-    if label is not None:
+    if "labels" in mapping:
+        label = mapping['labels']
         num_pts, _ = label.shape
-        print(label)
         for j in range(1, num_pts): # num_pts-1
             color = (32, 165, 64)
             cv2.line(image, pts2pix(label[j-1,0], label[j-1,1]), pts2pix(label[j,0], label[j,1]), color, 2)
-        cv2.circle(image, pts2pix(label[-1,0], label[-1,1]), 2, (0, 255, 0), thickness=-1)
-
+        cv2.circle(image, pts2pix(label[-1,0], label[-1,1]), 3, (0, 255, 0), thickness=-1)
+    
+    lane_label_idx = mapping['stage_one_label']
+    cv2.putText(image, 'lane_label_idx:'+str(lane_label_idx), (20, h-30), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     cv2.imshow(win_name, image)
     cv2.waitKey(wait_key)
     return image
 
+
+visualize_carla = False
+if visualize_carla: from carla_visualize import *
 
 class CarlaSyncModeWithTraffic(object):
     """
@@ -92,7 +105,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         self.vector_net_hidden_size = 128
-        self.visualize_carla = True
+        self.visualize_carla = visualize_carla
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
         # print(self.client.get_available_maps())
@@ -104,6 +117,7 @@ class CarlaSyncModeWithTraffic(object):
         # self.world.unload_map_layer(carla.MapLayer.Buildings)
         self.map = self.world.get_map()
         if self.visualize_carla:
+            import pygame
             self.width, self.height = 1920, 1080
             pygame.init()
             self.display = pygame.display.set_mode(
@@ -367,7 +381,7 @@ class CarlaSyncModeWithTraffic(object):
         max_distance_for_agents = 70
         polyline_spans = []
         vectors = []
-        trajs = []
+        relative_trajs = []
         map_start_polyline_idx = None
         agent_loc = self.hero_pos_list[two_second_index]
         angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
@@ -387,25 +401,20 @@ class CarlaSyncModeWithTraffic(object):
             # print(vh_loc, end=",")
             if abs(vh_loc[0] - agent_loc[0]) < max_distance_for_agents and abs(vh_loc[1] - agent_loc[1]) < max_distance_for_agents:
                 start = len(vectors)
-                # traj for denseTNT visualize:
+                # relative_trajs for denseTNT visualize:
                 traj = []
                 for pos in self.vehicles_pos_list[vhid]:
-                    traj.append(pos[0])
-                    traj.append(pos[1])
-                traj = np.array(traj).reshape((-1, 2))
-                trajs.append(traj)
+                    x, y = rotate(pos[0]-agent_loc[0], pos[1]-agent_loc[1], angle)
+                    traj.append([x,y])
+                relative_trajs.append(np.array(traj).reshape((-1, 2)))
                 # trajectory for prediction
                 is_agent = self.world.get_actor(self.vehicles_list[vhid]).attributes['role_name'] == 'hero'
                 is_others, is_av = not is_agent, False
-                for i, line in enumerate(self.vehicles_pos_list[vhid]):
+                for i, line in enumerate(traj):
                     x, y = line[0], line[1]
                     time_stamp = (i - two_second_index) * 0.1
-                    # if i > 0: # For testing
                     if i > 0 and i < two_second_index:
-                        line_pre = self.vehicles_pos_list[vhid][i-1].copy()
-                        # print(x-line_pre[X], y-line_pre[Y])
-                        x, y = rotate(x - agent_loc[0], y - agent_loc[1], angle)
-                        line_pre[0], line_pre[1]= rotate(line_pre[0] - agent_loc[0], line_pre[1] - agent_loc[1], angle)
+                        line_pre = traj[i-1]
                         vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
                                 is_agent, is_others, len(polyline_spans), i]
                         vectors.append(get_pad_vector(vector, self.vector_net_hidden_size))
@@ -443,14 +452,12 @@ class CarlaSyncModeWithTraffic(object):
                     points.append(point)
             subdivide_points = get_subdivide_points(polygon)
             points.extend(subdivide_points)
-            subdivide_points = get_subdivide_points(polygon, include_self=True)
         mapping['goals_2D'] = np.array(points)
         
         labels = []
-        for i, line in enumerate(self.vehicles_pos_list[0][20:50]):
-            label_x, label_y = rotate(line[0] - agent_loc[0], line[1] - agent_loc[1], angle)
-            labels.append(label_x)
-            labels.append(label_y)
+        for i, line in enumerate(relative_trajs[0][20:50]):
+            labels.append(line[0])
+            labels.append(line[1])
         point_label = np.array(labels[-2:])
         mapping['goals_2D_labels'] = np.argmin(get_dis(mapping['goals_2D'], point_label))
 
@@ -489,7 +496,8 @@ class CarlaSyncModeWithTraffic(object):
                 point_pre = point
             end = len(vectors)
             if start < end: polyline_spans.append([start, end])
-
+        
+        mapping['vis_lanes'] = polygons
         # update dict
         mapping.update(dict(
             matrix=np.array(vectors),
@@ -498,7 +506,7 @@ class CarlaSyncModeWithTraffic(object):
             labels_is_valid=np.ones(30, dtype=np.int64),
             eval_time=30, cent_x=agent_loc[0], cent_y=agent_loc[1],
             map_start_polyline_idx=map_start_polyline_idx, polygons=polygons,
-            traj=traj, angle=angle, origin_labels=origin_labels,
+            trajs=relative_trajs, angle=angle, origin_labels=origin_labels,
             file_name='carla_'+str(self.tick_cnt)
         ))
 
@@ -531,7 +539,7 @@ if __name__ == '__main__':
             for i in range(offline_data_num):
                 carla_client.tick()
                 carla_client.get_vectornet_input(mapping)
-                draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
+                draw_matrix(mapping, wait_key=10)
                 # TODO: save trajectory as csv file
                 # carla_client.vehicles_pos_list should do the work, the first one is agent and others are others
                 pass
@@ -541,6 +549,6 @@ if __name__ == '__main__':
             while True:
                 carla_client.tick()
                 carla_client.get_vectornet_input(mapping)
-                draw_matrix(mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], wait_key=10)
+                draw_matrix(mapping, wait_key=10)
     finally:
         carla_client.destroy_vechicles()

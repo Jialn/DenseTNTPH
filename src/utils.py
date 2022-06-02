@@ -621,7 +621,6 @@ def visualize_goals_2D(mapping, goals_2D, scores: np.ndarray, future_frame_num, 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=np.max(scores)))
     plt.colorbar(sm)
 
-    trajs = mapping['trajs']
     if args.argoverse:
         name = os.path.split(mapping['file_name'])[1].split('.')[0]
     name = name + '.FDE={}'.format(loss)
@@ -645,6 +644,7 @@ def visualize_goals_2D(mapping, goals_2D, scores: np.ndarray, future_frame_num, 
     yaw_0 = None
 
     def draw_his_trajs():
+        trajs = mapping['trajs']
         for i, traj in enumerate(trajs):
             assert isinstance(traj, np.ndarray)
             assert traj.ndim == 2 and traj.shape[1] == 2, traj.shape
