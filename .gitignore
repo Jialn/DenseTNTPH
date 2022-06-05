@@ -7,6 +7,7 @@ src/modeling/__pycache__/*
 src/build/temp.linux-x86_64-cpython-37/utils_cython.o
 src/build/lib.linux-x86_64-cpython-37/utils_cython.cpython-37m-x86_64-linux-gnu.so
 src/utils_cython.cpython-37m-x86_64-linux-gnu.so
+carla_offline_data/*
 
 models.densetnt.set_predict.1/**/*
 !models.densetnt.set_predict.1/model_save

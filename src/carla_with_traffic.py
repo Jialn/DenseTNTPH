@@ -16,7 +16,160 @@ from utils import rotate, get_subdivide_points, get_dis
 from carla_submap_wrapper import get_lane_ids_in_xy_bbox, get_lane_segment_centerline, city_lane_centerlines_dict, get_all_lane_info
 
 
-def draw_matrix(mapping, win_name="matrix_vis", wait_key=None):
+def get_vectornet_mapping(all_vehicles_pos_list, agent_angle, 
+        map_bound_info, map_lane_info, frame_cnt,
+        mapping):
+    '''
+    Get the vectornet mapping from vechicles pos list and map data
+    Inputs:
+        all_vehicles_pos_list: position list of all the vehicles including agent. agent is the first one of all_vehicles_pos_list
+        agent_angle: the yaw angle of agent at the current (2s) timestamp
+        map_bound_info, map_lane_info: the map info, dict, refer tocarla_submap_wrapper
+        frame_cnt: a number, will be add to the 'filename', should be unique in the dataset
+        mapping: a dict, can be empty, used for vectornet input of denseTNT and training
+    Output: will complete the mapping keys as output, including:
+        'cent_x', 'cent_y', 'angle', 'trajs', 'map_start_polyline_idx', 'polygons', 
+        'goals_2D', 'matrix', 'polyline_spans', 'origin_labels',  'goals_2D_labels', 'stage_one_label',  'labels', 'labels_is_valid',
+        'eval_time', 'file_name'
+    '''
+    two_second_index = 20
+    min_distance_submap = 35
+    max_distance_for_agents = 70
+    vector_net_hidden_size = 128
+    polyline_spans = []
+    vectors = []
+    relative_trajs = []
+    map_start_polyline_idx = None
+    agent_pos_list = all_vehicles_pos_list[0]
+    agent_loc = agent_pos_list[two_second_index]
+    
+    def get_pad_vector(li, hidden_size):
+        # Pad vector to hidden_size
+        assert len(li) <= hidden_size
+        li.extend([0] * (hidden_size - len(li)))
+        return li
+    
+    def get_hash(point):
+        return round((point[0] + 500) * 100) * 1000000 + round((point[1] + 500) * 100)
+
+    # get vehicles' trajectory
+    for vhid in range(len(all_vehicles_pos_list)):
+        vh_loc = all_vehicles_pos_list[vhid][two_second_index]
+        # print(vh_loc, end=",")
+        if abs(vh_loc[0] - agent_loc[0]) < max_distance_for_agents and abs(vh_loc[1] - agent_loc[1]) < max_distance_for_agents:
+            start = len(vectors)
+            # relative_trajs for denseTNT visualize:
+            traj = []
+            for pos in all_vehicles_pos_list[vhid]:
+                x, y = rotate(pos[0]-agent_loc[0], pos[1]-agent_loc[1], agent_angle)
+                traj.append([x,y])
+            relative_trajs.append(np.array(traj).reshape((-1, 2)))
+            # trajectory for prediction
+            is_agent = (vhid == 0)  # self.world.get_actor(self.vehicles_list[vhid]).attributes['role_name'] == 'hero'
+            is_others, is_av = not is_agent, False
+            for i, line in enumerate(traj):
+                x, y = line[0], line[1]
+                time_stamp = (i - two_second_index) * 0.1
+                if i > 0 and i < two_second_index:
+                    line_pre = traj[i-1]
+                    vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
+                            is_agent, is_others, len(polyline_spans), i]
+                    vectors.append(get_pad_vector(vector, vector_net_hidden_size))
+            # set polyline_spans
+            end = len(vectors)
+            polyline_spans.append([start, end])
+        # end vehicles' trajectory
+    map_start_polyline_idx = len(polyline_spans)
+    origin_labels = np.zeros([30, 2])
+    for i, line in enumerate(all_vehicles_pos_list[0][20:50]):
+        origin_labels[i][0], origin_labels[i][1] = line[0], line[1]
+
+    # get sub-map around agent location
+    VECTOR_PRE_X = 0
+    VECTOR_PRE_Y = 1
+    VECTOR_X = 2
+    VECTOR_Y = 3
+    lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], map_bound_info, min_distance_submap)
+    local_lane_centerlines = [get_lane_segment_centerline(lane_id, map_lane_info) for lane_id in lane_ids]
+    polygons = local_lane_centerlines
+    polygons = [polygon[:, :2].copy() for polygon in polygons]
+    for index_polygon, polygon in enumerate(polygons):
+        for i, point in enumerate(polygon):
+            point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], agent_angle)
+    local_lane_centerlines = [polygon for polygon in polygons]
+
+    # goals_2D and labels
+    points = []
+    visit = {}
+    for index_polygon, polygon in enumerate(polygons):
+        for i, point in enumerate(polygon):
+            hash = get_hash(point)
+            if hash not in visit:
+                visit[hash] = True
+                points.append(point)
+        subdivide_points = get_subdivide_points(polygon)
+        points.extend(subdivide_points)
+    mapping['goals_2D'] = np.array(points)
+    
+    labels = []
+    for i, line in enumerate(relative_trajs[0][20:50]):
+        labels.append(line[0])
+        labels.append(line[1])
+    point_label = np.array(labels[-2:])
+    mapping['goals_2D_labels'] = np.argmin(get_dis(mapping['goals_2D'], point_label))
+    mapping['goals_2D_labels_xy'] = mapping['goals_2D'][mapping['goals_2D_labels']]
+
+    stage_one_label = 0
+    min_dis = 10000.0
+    for i, polygon in enumerate(polygons):
+        temp = np.min(get_dis(polygon, point_label))
+        if temp < min_dis:
+            min_dis = temp
+            stage_one_label = i
+    mapping['stage_one_label'] = stage_one_label
+    
+    for index_polygon, polygon in enumerate(polygons):
+        start = len(vectors)
+        # semantic_lane 
+        lane_id = lane_ids[index_polygon]
+        lane_segment_dict = city_lane_centerlines_dict(lane_id, map_lane_info)
+        # assert_(len(polygon) >= 2)
+        for i, point in enumerate(polygon):
+            if i > 0:
+                vector = [0] * vector_net_hidden_size # args.hidden_size
+                vector[-1 - VECTOR_PRE_X], vector[-1 - VECTOR_PRE_Y] = point_pre[0], point_pre[1]
+                vector[-1 - VECTOR_X], vector[-1 - VECTOR_Y] = point[0], point[1]
+                vector[-5], vector[-6], vector[-7] = 1, i, len(polyline_spans)
+                # semantic_lane 
+                vector[-8] = 1 if lane_segment_dict['has_traffic_control'] else -1
+                vector[-9] = 1 if lane_segment_dict['turn_direction'] == 'RIGHT' else \
+                    -1 if lane_segment_dict['turn_direction'] == 'LEFT' else 0
+                vector[-10] = 1 if lane_segment_dict['is_intersection'] else -1
+                # pre-point
+                point_pre_pre = (2 * point_pre[0] - point[0], 2 * point_pre[1] - point[1])
+                if i >= 2: point_pre_pre = polygon[i - 2]
+                vector[-17], vector[-18] = point_pre_pre[0], point_pre_pre[1]
+                # anppend res
+                vectors.append(vector)
+            point_pre = point
+        end = len(vectors)
+        if start < end: polyline_spans.append([start, end])
+    
+    mapping['vis_lanes'] = polygons
+    # update dict
+    mapping.update(dict(
+        matrix=np.array(vectors),
+        labels=np.array(labels).reshape([30, 2]),
+        polyline_spans=[slice(each[0], each[1]) for each in polyline_spans],
+        labels_is_valid=np.ones(30, dtype=np.int64),
+        eval_time=30, cent_x=agent_loc[0], cent_y=agent_loc[1],
+        map_start_polyline_idx=map_start_polyline_idx, polygons=polygons,
+        trajs=relative_trajs, angle=agent_angle, origin_labels=origin_labels,
+        file_name='carla_'+str(frame_cnt)
+    ))
+
+
+def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
     import cv2
     draw_goals_2D = False
     matrix, polygon_span, map_start_idx = mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], 
@@ -75,7 +228,8 @@ def draw_matrix(mapping, win_name="matrix_vis", wait_key=None):
         cv2.circle(image, pts2pix(label[-1,0], label[-1,1]), 3, (0, 255, 0), thickness=-1)
     
     lane_label_idx = mapping['stage_one_label']
-    cv2.putText(image, 'lane_label_idx:'+str(lane_label_idx), (20, h-30), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    cv2.putText(image, 'lane_label_idx:'+str(lane_label_idx), (20, h-60), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    cv2.putText(image, 'goal_label_idx:'+str(mapping['goals_2D_labels'])+', goal_label:'+str(mapping['goals_2D_labels_xy']), (20, h-30), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     cv2.imshow(win_name, image)
     cv2.waitKey(wait_key)
     return image
@@ -92,7 +246,6 @@ class CarlaSyncModeWithTraffic(object):
     def __init__(self):
         self.vehicles_list = []
         self.vehicles_pos_list = []
-        self.hero_pos_list = []
         self.walkers_list = []
         self.all_id = []
         self.client = carla.Client('127.0.0.1', 2000)  # ip and port
@@ -104,7 +257,6 @@ class CarlaSyncModeWithTraffic(object):
         self.generationv = 'All'
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
-        self.vector_net_hidden_size = 128
         self.visualize_carla = visualize_carla
         random.seed(self.seed if self.seed is not None else int(time.time()))
         self.world = self.client.get_world()
@@ -352,11 +504,6 @@ class CarlaSyncModeWithTraffic(object):
             self.vehicles_pos_list[i].append(np.array([pos.x, pos.y]))
             if len(self.vehicles_pos_list[i]) > self.max_trajectory_size:
                 self.vehicles_pos_list[i].pop(0)
-            # print( acotr_i.attributes['role_name'])
-            if acotr_i.attributes['role_name'] == 'hero':
-                self.hero_pos_list.append(np.array([pos.x, pos.y]))
-                if len(self.hero_pos_list) > self.max_trajectory_size:
-                    self.hero_pos_list.pop(0)
         # save actor's transforms for visualize
         actors = self.world.get_actors()
         self.actors_with_transforms = [(actor, actor.get_transform()) for actor in actors]
@@ -368,147 +515,14 @@ class CarlaSyncModeWithTraffic(object):
         self.tick_cnt += 1
 
     def get_vectornet_input(self, mapping):
-        '''
-        mapping keys:
-            # already impl:
-            'cent_x', 'cent_y', 'angle', 'trajs', 'map_start_polyline_idx', 'polygons', 
-            'goals_2D', 'matrix', 'polyline_spans', 'origin_labels',  'goals_2D_labels', 'stage_one_label',  'labels', 'labels_is_valid', 'eval_time'
-            # not in dataset infer: 'stage_one_scores', 'stage_one_topk', 'set_predict_ans_points', 'vis.predict_trajs', 'file_name', 'agents'
-            # not used outside dataset construct: 'start_time' , 'two_seconds', 'city_name', 'agent_pred_index'
-        '''
-        two_second_index = 20
-        min_distance_submap = 35
-        max_distance_for_agents = 70
-        polyline_spans = []
-        vectors = []
-        relative_trajs = []
-        map_start_polyline_idx = None
-        agent_loc = self.hero_pos_list[two_second_index]
         angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
+        get_vectornet_mapping(all_vehicles_pos_list = self.vehicles_pos_list, agent_angle = angle,
+            map_bound_info=self.bound_info, map_lane_info=self.lane_info,
+            frame_cnt=self.tick_cnt, mapping=mapping)
 
-        def get_pad_vector(li, hidden_size):
-            # Pad vector to hidden_size
-            assert len(li) <= hidden_size
-            li.extend([0] * (hidden_size - len(li)))
-            return li
-        
-        def get_hash(point):
-            return round((point[0] + 500) * 100) * 1000000 + round((point[1] + 500) * 100)
-
-        # get vehicles' trajectory
-        for vhid in range(len(self.vehicles_pos_list)):
-            vh_loc = self.vehicles_pos_list[vhid][two_second_index]
-            # print(vh_loc, end=",")
-            if abs(vh_loc[0] - agent_loc[0]) < max_distance_for_agents and abs(vh_loc[1] - agent_loc[1]) < max_distance_for_agents:
-                start = len(vectors)
-                # relative_trajs for denseTNT visualize:
-                traj = []
-                for pos in self.vehicles_pos_list[vhid]:
-                    x, y = rotate(pos[0]-agent_loc[0], pos[1]-agent_loc[1], angle)
-                    traj.append([x,y])
-                relative_trajs.append(np.array(traj).reshape((-1, 2)))
-                # trajectory for prediction
-                is_agent = self.world.get_actor(self.vehicles_list[vhid]).attributes['role_name'] == 'hero'
-                is_others, is_av = not is_agent, False
-                for i, line in enumerate(traj):
-                    x, y = line[0], line[1]
-                    time_stamp = (i - two_second_index) * 0.1
-                    if i > 0 and i < two_second_index:
-                        line_pre = traj[i-1]
-                        vector = [line_pre[0], line_pre[1], x, y, time_stamp, is_av,
-                                is_agent, is_others, len(polyline_spans), i]
-                        vectors.append(get_pad_vector(vector, self.vector_net_hidden_size))
-                # set polyline_spans
-                end = len(vectors)
-                polyline_spans.append([start, end])
-            # end vehicles' trajectory
-        map_start_polyline_idx = len(polyline_spans)
-        origin_labels = np.zeros([30, 2])
-        for i, line in enumerate(self.vehicles_pos_list[0][20:50]):
-            origin_labels[i][0], origin_labels[i][1] = line[0], line[1]
-
-        # get sub-map around agent location
-        VECTOR_PRE_X = 0
-        VECTOR_PRE_Y = 1
-        VECTOR_X = 2
-        VECTOR_Y = 3
-        lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], self.bound_info, min_distance_submap)
-        local_lane_centerlines = [get_lane_segment_centerline(lane_id, self.lane_info) for lane_id in lane_ids]
-        polygons = local_lane_centerlines
-        polygons = [polygon[:, :2].copy() for polygon in polygons]
-        for index_polygon, polygon in enumerate(polygons):
-            for i, point in enumerate(polygon):
-                point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], angle)
-        local_lane_centerlines = [polygon for polygon in polygons]
-
-        # goals_2D and labels
-        points = []
-        visit = {}
-        for index_polygon, polygon in enumerate(polygons):
-            for i, point in enumerate(polygon):
-                hash = get_hash(point)
-                if hash not in visit:
-                    visit[hash] = True
-                    points.append(point)
-            subdivide_points = get_subdivide_points(polygon)
-            points.extend(subdivide_points)
-        mapping['goals_2D'] = np.array(points)
-        
-        labels = []
-        for i, line in enumerate(relative_trajs[0][20:50]):
-            labels.append(line[0])
-            labels.append(line[1])
-        point_label = np.array(labels[-2:])
-        mapping['goals_2D_labels'] = np.argmin(get_dis(mapping['goals_2D'], point_label))
-
-        stage_one_label = 0
-        min_dis = 10000.0
-        for i, polygon in enumerate(polygons):
-            temp = np.min(get_dis(polygon, point_label))
-            if temp < min_dis:
-                min_dis = temp
-                stage_one_label = i
-        mapping['stage_one_label'] = stage_one_label
-        
-        for index_polygon, polygon in enumerate(polygons):
-            start = len(vectors)
-            # semantic_lane 
-            lane_id = lane_ids[index_polygon]
-            lane_segment_dict = city_lane_centerlines_dict(lane_id, self.lane_info)
-            # assert_(len(polygon) >= 2)
-            for i, point in enumerate(polygon):
-                if i > 0:
-                    vector = [0] * self.vector_net_hidden_size # args.hidden_size
-                    vector[-1 - VECTOR_PRE_X], vector[-1 - VECTOR_PRE_Y] = point_pre[0], point_pre[1]
-                    vector[-1 - VECTOR_X], vector[-1 - VECTOR_Y] = point[0], point[1]
-                    vector[-5], vector[-6], vector[-7] = 1, i, len(polyline_spans)
-                    # semantic_lane 
-                    vector[-8] = 1 if lane_segment_dict['has_traffic_control'] else -1
-                    vector[-9] = 1 if lane_segment_dict['turn_direction'] == 'RIGHT' else \
-                        -1 if lane_segment_dict['turn_direction'] == 'LEFT' else 0
-                    vector[-10] = 1 if lane_segment_dict['is_intersection'] else -1
-                    # pre-point
-                    point_pre_pre = (2 * point_pre[0] - point[0], 2 * point_pre[1] - point[1])
-                    if i >= 2: point_pre_pre = polygon[i - 2]
-                    vector[-17], vector[-18] = point_pre_pre[0], point_pre_pre[1]
-                    # anppend res
-                    vectors.append(vector)
-                point_pre = point
-            end = len(vectors)
-            if start < end: polyline_spans.append([start, end])
-        
-        mapping['vis_lanes'] = polygons
-        # update dict
-        mapping.update(dict(
-            matrix=np.array(vectors),
-            labels=np.array(labels).reshape([30, 2]),
-            polyline_spans=[slice(each[0], each[1]) for each in polyline_spans],
-            labels_is_valid=np.ones(30, dtype=np.int64),
-            eval_time=30, cent_x=agent_loc[0], cent_y=agent_loc[1],
-            map_start_polyline_idx=map_start_polyline_idx, polygons=polygons,
-            trajs=relative_trajs, angle=angle, origin_labels=origin_labels,
-            file_name='carla_'+str(self.tick_cnt)
-        ))
+    def collect_offline_onestep(self):
+        angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
+        return self.vehicles_pos_list, angle
 
     def destroy_vechicles(self):
         settings = self.world.get_settings()
@@ -525,30 +539,42 @@ class CarlaSyncModeWithTraffic(object):
 
 save_offline_data = True # if True, will save mapping data as npy and trajectory as csv file
 offline_data_path = './carla_offline_data'
-offline_data_num = 20 * 1000 # 20K
-
+offline_data_num_killo = 20  # in K, will * 1000
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     carla_client = CarlaSyncModeWithTraffic()
     try:
         if save_offline_data:
+            import os
+            if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             # TODO: save lane_info and bound_info as npy
             # carla_client.bound_info, carla_client.lane_info
-            mapping = {}
-            for i in range(offline_data_num):
-                carla_client.tick()
-                carla_client.get_vectornet_input(mapping)
-                draw_matrix(mapping, wait_key=10)
-                # TODO: save trajectory as csv file
-                # carla_client.vehicles_pos_list should do the work, the first one is agent and others are others
-                pass
-                # after this part done, change dataset_carla.py accrodingly
+            os.system("cp bound_info.npy " + offline_data_path+'/')
+            os.system("cp lane_info.npy " + offline_data_path+'/')
+            offline_data_path = offline_data_path+'/' + str(carla_client.seed)+'/'
+            if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
+            mapping = None
+            for i in range(offline_data_num_killo):
+                vehicles_pos_lists = []
+                agent_angles = []
+                offline_data_block_size = 1000
+                for j in range(offline_data_block_size):
+                    carla_client.tick()
+                    vehicles_pos_list, angle = carla_client.collect_offline_onestep()
+                    vehicles_pos_lists.append(vehicles_pos_list.copy())
+                    agent_angles.append(angle)
+                    # carla_client.get_vectornet_input(mapping)
+                    # draw_vectornet_mapping(mapping, wait_key=10)
+                append_name = str((i+1)*offline_data_block_size)+'.npy'
+                np.save(offline_data_path+'vehicles_pos_list_'+append_name, np.array(vehicles_pos_lists), allow_pickle=True)
+                np.save(offline_data_path+'agent_angle_'+append_name, np.array(agent_angles), allow_pickle=True)
+                print("current data gen index:" + str(i*offline_data_block_size)) 
         else:
             mapping = {}
             while True:
                 carla_client.tick()
                 carla_client.get_vectornet_input(mapping)
-                draw_matrix(mapping, wait_key=10)
+                draw_vectornet_mapping(mapping, wait_key=10)
     finally:
         carla_client.destroy_vechicles()

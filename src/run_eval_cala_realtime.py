@@ -32,7 +32,7 @@ from torch.utils.data import SequentialSampler
 
 import utils
 from modeling.vectornet import VectorNet
-from carla_with_traffic import CarlaSyncModeWithTraffic, draw_matrix
+from carla_with_traffic import CarlaSyncModeWithTraffic, draw_vectornet_mapping
 
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -130,7 +130,7 @@ def do_eval(args):
             # run the model
             pred_trajectory, pred_score, _ = model(test_mapping, device)
             # visulaize
-            draw_matrix(test_mapping[0], wait_key=10, win_name='carla_vis') # wait_key=10 or None
+            draw_vectornet_mapping(test_mapping[0], wait_key=10, win_name='carla_vis') # wait_key=10 or None
             print("length of original matrix:" + str(len(test_mapping[0]['matrix'])))
             print("map start idx:" + str(test_mapping[0]['map_start_polyline_idx']))
             # print("polyline_spans:" + str(test_mapping['polyline_spans']))
@@ -144,7 +144,7 @@ def do_eval(args):
         if run_testing_on_argoverse:
             batch = argoverse_batch[loop_cnt%len(argoverse_batch)]
             pred_trajectory, pred_score, _ = model(batch, device)
-            draw_matrix(batch[0], wait_key=None, win_name='argo_vis')
+            draw_vectornet_mapping(batch[0], wait_key=None, win_name='argo_vis')
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))
