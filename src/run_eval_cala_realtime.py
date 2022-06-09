@@ -22,7 +22,12 @@ python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
     set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval \
     --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ --reuse_temp_file # --visualize
 
-"data_dir_for_val" is not used when run_testing_on_argoverse is False, just pass any fake path instead
+Note "data_dir_for_val" is not used when run_offline_testing is False, just pass any fake path instead
+
+Run example on carla dataset:
+set offline_testing_dataset = 'carla' and run:
+python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30   --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map   --core_num 16 --use_centerline --distributed_training 1   --other_params     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj     set_predict=6 set_predict-6 data_ratio_per_epoch=0.4 set_predict-topk=0 set_predict-one_encoder set_predict-MRratio=1.0     set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval     --data_dir_for_val carla_offline_data/16000/ #  --reuse_temp_file # --visualize
+
 '''
 import argparse
 import logging
@@ -102,7 +107,7 @@ def do_eval(args):
 
     run_offline_testing = True  # for offline testing on argoverse or carla dataset, only for testing purpose
     offline_testing_dataset = 'carla'  # 'carla' 'argoverse'
-    run_testing_on_carla = True  # for testing on carla
+    run_testing_on_carla = False  # for testing on carla
 
     if run_offline_testing:
         print("Loading Evalute Dataset", args.data_dir)
@@ -152,6 +157,7 @@ def do_eval(args):
             batch = argoverse_batch[loop_cnt%len(argoverse_batch)]
             pred_trajectory, pred_score, _ = model(batch, device)
             draw_vectornet_mapping(batch[0], wait_key=None, win_name='offline_eval_vis')
+            batch[0].clear()
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))
