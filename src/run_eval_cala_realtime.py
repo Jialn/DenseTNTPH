@@ -100,12 +100,16 @@ def do_eval(args):
     model.to(device)
     model.eval()
 
-    run_testing_on_argoverse = False # for testing on argoverse dataset, only for compare purpose
-    run_testing_on_carla = True # for testing on carla
+    run_offline_testing = True  # for offline testing on argoverse or carla dataset, only for testing purpose
+    offline_testing_dataset = 'carla'  # 'carla' 'argoverse'
+    run_testing_on_carla = True  # for testing on carla
 
-    if run_testing_on_argoverse:
+    if run_offline_testing:
         print("Loading Evalute Dataset", args.data_dir)
-        from dataset_argoverse import Dataset
+        if offline_testing_dataset == 'argoverse':
+            from dataset_argoverse import Dataset
+        else: # 'carla'
+            from dataset_carla import Dataset
         eval_dataset = Dataset(args, args.eval_batch_size)
         eval_sampler = SequentialSampler(eval_dataset)
         eval_dataloader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.eval_batch_size,
@@ -115,6 +119,9 @@ def do_eval(args):
         argoverse_batch = []
         for batch in eval_dataloader:
             argoverse_batch.append(batch)
+        print("argoverse_batch length:")
+        print(len(argoverse_batch))
+    
     test_mapping = [{}]*args.eval_batch_size
     import structs
     carla_pred = structs.ArgoPred()
@@ -141,10 +148,10 @@ def do_eval(args):
                 carla_pred[test_mapping[i]['file_name']] = structs.MultiScoredTrajectory(pred_score[i].copy(), pred_trajectory[i].copy())
                 eval_instance_carla(batch_size, args, pred_trajectory, test_mapping, file2pred, file2labels, DEs)
 
-        if run_testing_on_argoverse:
+        if run_offline_testing:
             batch = argoverse_batch[loop_cnt%len(argoverse_batch)]
             pred_trajectory, pred_score, _ = model(batch, device)
-            draw_vectornet_mapping(batch[0], wait_key=None, win_name='argo_vis')
+            draw_vectornet_mapping(batch[0], wait_key=None, win_name='offline_eval_vis')
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))

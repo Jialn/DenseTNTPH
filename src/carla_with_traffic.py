@@ -215,21 +215,22 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
         # pred_trajectory = pred_trajectory.reshape([6, 30, 2])
         num_traj, num_pts, _ = pred_trajectory.shape
         for i in range(num_traj):
-            for j in range(1, num_pts): # num_pts-1
+            for j in range(1, num_pts-1): # num_pts-1
                 color = (32, 64, 165)
                 cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
             cv2.circle(image, pts2pix(pred_trajectory[i,-1,0], pred_trajectory[i,-1,1]), 2, (0, 0, 255), thickness=-1)
     if "labels" in mapping:
         label = mapping['labels']
         num_pts, _ = label.shape
-        for j in range(1, num_pts): # num_pts-1
+        for j in range(1, num_pts):
             color = (32, 165, 64)
             cv2.line(image, pts2pix(label[j-1,0], label[j-1,1]), pts2pix(label[j,0], label[j,1]), color, 2)
         cv2.circle(image, pts2pix(label[-1,0], label[-1,1]), 3, (0, 255, 0), thickness=-1)
     
     lane_label_idx = mapping['stage_one_label']
     cv2.putText(image, 'lane_label_idx:'+str(lane_label_idx), (20, h-60), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
-    cv2.putText(image, 'goal_label_idx:'+str(mapping['goals_2D_labels'])+', goal_label:'+str(mapping['goals_2D_labels_xy']), (20, h-30), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
+    if 'goals_2D_labels_xy' in mapping:
+        cv2.putText(image, 'goal_label_idx:'+str(mapping['goals_2D_labels'])+', goal_label:'+str(mapping['goals_2D_labels_xy']), (20, h-30), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1)
     cv2.imshow(win_name, image)
     cv2.waitKey(wait_key)
     return image
@@ -539,7 +540,7 @@ class CarlaSyncModeWithTraffic(object):
 
 save_offline_data = True # if True, will save mapping data as npy and trajectory as csv file
 offline_data_path = './carla_offline_data'
-offline_data_num_killo = 20  # in K, will * 1000
+offline_data_num_killo = 10  # in K, will * 1000
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
@@ -547,29 +548,31 @@ if __name__ == '__main__':
     try:
         if save_offline_data:
             import os
+            import time
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             # TODO: save lane_info and bound_info as npy
             # carla_client.bound_info, carla_client.lane_info
-            os.system("cp bound_info.npy " + offline_data_path+'/')
-            os.system("cp lane_info.npy " + offline_data_path+'/')
             offline_data_path = offline_data_path+'/' + str(carla_client.seed)+'/'
+            os.system("cp bound_info.npy " + offline_data_path)
+            os.system("cp lane_info.npy " + offline_data_path)
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             mapping = None
             for i in range(offline_data_num_killo):
                 vehicles_pos_lists = []
                 agent_angles = []
                 offline_data_block_size = 1000
+                start_time = time.time()
                 for j in range(offline_data_block_size):
                     carla_client.tick()
                     vehicles_pos_list, angle = carla_client.collect_offline_onestep()
-                    vehicles_pos_lists.append(vehicles_pos_list.copy())
+                    vehicles_pos_lists.append(np.array(vehicles_pos_list))
                     agent_angles.append(angle)
                     # carla_client.get_vectornet_input(mapping)
                     # draw_vectornet_mapping(mapping, wait_key=10)
                 append_name = str((i+1)*offline_data_block_size)+'.npy'
                 np.save(offline_data_path+'vehicles_pos_list_'+append_name, np.array(vehicles_pos_lists), allow_pickle=True)
                 np.save(offline_data_path+'agent_angle_'+append_name, np.array(agent_angles), allow_pickle=True)
-                print("current data gen index:" + str(i*offline_data_block_size)) 
+                print("1000 samples generated in "+str(time.time()-start_time)+" sec, current data gen index:" + str(i*offline_data_block_size)) 
         else:
             mapping = {}
             while True:
