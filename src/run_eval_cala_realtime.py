@@ -108,18 +108,13 @@ def do_eval(args):
         utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
     model.to(device)
     model.eval()
-
-    offline_testing_dataset_type = 'argoverse'  # 'carla' 'argoverse'
-    if os.path.exists(args.data_dir[0]+'lane_info.npy'):
-        print("import dataset carla")
-        offline_testing_dataset_type = 'carla'  # 'carla' 'argoverse'
-
+    
     if run_offline_testing:
         print("Loading Evalute Dataset", args.data_dir)
-        if offline_testing_dataset_type == 'argoverse':
-            from dataset_argoverse import Dataset
-        else: # 'carla'
+        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
             from dataset_carla import Dataset
+        else: # 'carla'
+            from dataset_argoverse import Dataset
         eval_dataset = Dataset(args, args.eval_batch_size)
         eval_sampler = SequentialSampler(eval_dataset)
         eval_dataloader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.eval_batch_size,

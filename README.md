@@ -93,7 +93,7 @@ python3 src/run.py --argoverse --future_frame_num 30 \
 Example on my machine:
 ```
 OUTPUT_DIR=models.densetnt.1
-python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir /media/jiangtao.li/simu_machine_dat/argoverse/train/data --output_dir models.densetnt.1 --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
+python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir /media/jiangtao.li/simu_machine_dat/argoverse/train/data --output_dir ${OUTPUT_DIR} --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
 ```
 Training takes 20 minutes per epoch and 5 hours for the default 16 epochs on 8 × 2080Ti. 
 Add --reuse_temp_file  to skip re-listing the map file for the second time running

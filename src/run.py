@@ -245,7 +245,10 @@ def demo_basic(rank, world_size, kwargs, queue):
 
     if args.argoverse:
         if args.argoverse:
-            from dataset_argoverse import Dataset
+            if os.path.exists(args.data_dir[0]+'lane_info.npy'):
+                from dataset_carla import Dataset
+            else:
+                from dataset_argoverse import Dataset
         train_dataset = Dataset(args, args.train_batch_size, to_screen=False)
 
         train_sampler = DistributedSampler(train_dataset, shuffle=args.do_train)
@@ -288,7 +291,10 @@ def run(args):
 
     print("Loading dataset", args.data_dir)
     if args.argoverse:
-        from dataset_argoverse import Dataset
+        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
+            from dataset_carla import Dataset
+        else:
+            from dataset_argoverse import Dataset
 
     if args.distributed_training:
         queue = mp.Manager().Queue()

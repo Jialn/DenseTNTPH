@@ -542,6 +542,13 @@ save_offline_data = True # if True, will save mapping data as npy and trajectory
 offline_data_path = './carla_offline_data'
 offline_data_num_killo = 10  # in K, will * 1000
 
+"""
+Example on my machine:
+OUTPUT_DIR=carla_offline_data/models.densetnt.carla
+python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir carla_offline_data/16000/ \
+    --output_dir ${OUTPUT_DIR} --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
+    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
+"""
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     carla_client = CarlaSyncModeWithTraffic()
