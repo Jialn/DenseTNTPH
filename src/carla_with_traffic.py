@@ -553,9 +553,9 @@ if __name__ == '__main__':
             # TODO: save lane_info and bound_info as npy
             # carla_client.bound_info, carla_client.lane_info
             offline_data_path = offline_data_path+'/' + str(carla_client.seed)+'/'
+            if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             os.system("cp bound_info.npy " + offline_data_path)
             os.system("cp lane_info.npy " + offline_data_path)
-            if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             mapping = None
             for i in range(offline_data_num_killo):
                 vehicles_pos_lists = []

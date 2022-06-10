@@ -25,10 +25,10 @@ python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
 Note "data_dir_for_val" is not used when run_offline_testing is False, just pass any fake path instead
 
 Run example on carla dataset:
-set offline_testing_dataset = 'carla' and run:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30   --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map   --core_num 16 --use_centerline --distributed_training 1   --other_params     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj     set_predict=6 set_predict-6 data_ratio_per_epoch=0.4 set_predict-topk=0 set_predict-one_encoder set_predict-MRratio=1.0     set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval     --data_dir_for_val carla_offline_data/16000/ #  --reuse_temp_file # --visualize
 
 '''
+import os
 import argparse
 import logging
 import numpy as np
@@ -39,12 +39,16 @@ import utils
 from modeling.vectornet import VectorNet
 from carla_with_traffic import CarlaSyncModeWithTraffic, draw_vectornet_mapping
 
+run_testing_on_carla = False  # for testing on carla
+run_offline_testing = True  # for offline testing on argoverse or carla dataset, only for testing purpose
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
-carla_client = CarlaSyncModeWithTraffic()
+
+if run_testing_on_carla:
+    carla_client = CarlaSyncModeWithTraffic()
 
 
 def eval_instance_carla(batch_size, args, pred, mapping, file2pred, file2labels, DEs):
@@ -105,13 +109,14 @@ def do_eval(args):
     model.to(device)
     model.eval()
 
-    run_offline_testing = True  # for offline testing on argoverse or carla dataset, only for testing purpose
-    offline_testing_dataset = 'carla'  # 'carla' 'argoverse'
-    run_testing_on_carla = False  # for testing on carla
+    offline_testing_dataset_type = 'argoverse'  # 'carla' 'argoverse'
+    if os.path.exists(args.data_dir[0]+'lane_info.npy'):
+        print("import dataset carla")
+        offline_testing_dataset_type = 'carla'  # 'carla' 'argoverse'
 
     if run_offline_testing:
         print("Loading Evalute Dataset", args.data_dir)
-        if offline_testing_dataset == 'argoverse':
+        if offline_testing_dataset_type == 'argoverse':
             from dataset_argoverse import Dataset
         else: # 'carla'
             from dataset_carla import Dataset
@@ -161,7 +166,7 @@ def do_eval(args):
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))
-        if loop_cnt > 300: break
+        # if loop_cnt > 300: break
     post_eval(args, file2pred, file2labels, DEs)
 
 def main():
@@ -177,7 +182,8 @@ def main():
     finally:
         if 'optimization' in args.other_params:
             utils.select_goals_by_optimization(None, None, close=True)
-        carla_client.destroy_vechicles()
+        if run_testing_on_carla:
+            carla_client.destroy_vechicles()
 
 
 if __name__ == "__main__":

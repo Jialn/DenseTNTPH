@@ -33,7 +33,7 @@ class Dataset(torch.utils.data.Dataset):
             print(files[:5], files[-5:])
             pbar = tqdm(total=len(files))
 
-            args.core_num = min(args.core_num, len(files)//2)
+            args.core_num = min(args.core_num, len(files))
             queue = multiprocessing.Queue(args.core_num)
             queue_res = multiprocessing.Queue()
 
