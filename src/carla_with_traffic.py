@@ -1,10 +1,25 @@
 """
+CarlaEnvironment.
+Install carla:
+    wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.13.tar.gz
+    mkdir carla && \
+    tar zxf CARLA_0.9.13.tar.gz -C carla
+    cd carla/Import
+    wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/AdditionalMaps_0.9.13.tar.gz
+    cd ..
+    ./ImportAssets.sh
+    easy_install PythonAPI/carla/dist/carla-0.9.13-py3.7-linux-x86_64.egg  or
+    pip install PythonAPI/carla/dist/carla-0.9.13-cp37-cp37m-manylinux_2_27_x86_64.whl 
+    pip install networkx==2.2
+You may need to rename the file to 'carla-0.9.13-cp37-cp37m-manylinux1_x86_64.whl'
+Make sure you are using python3.7
+
+To Run:
 ./CarlaUE4.sh # -RenderOffScreen
 # to use less GPU memory:
 ./CarlaUE4.sh  -RenderOffScreen -quality-level=Low 
 # testing:
 python src/carla_with_traffic.py
-
 """
 import time
 import carla
