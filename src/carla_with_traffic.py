@@ -558,11 +558,18 @@ offline_data_path = './carla_offline_data'
 offline_data_num_killo = 10  # in K, will * 1000
 
 """
-Example on my machine:
+Training Example:
 OUTPUT_DIR=carla_offline_data/models.densetnt.carla
-python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir carla_offline_data/16000/ \
+python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir carla_offline_data/16000_300K/ \
     --output_dir ${OUTPUT_DIR} --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
+
+Eval:
+python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30   --output_dir carla_offline_data/models.densetnt.carla \
+    --hidden_size 128 --eval_batch_size 1 --use_map   --core_num 16 --use_centerline --distributed_training 1   \
+    --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph  \
+    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 \
+    --data_dir_for_val carla_offline_data/16000 --reuse_temp_file # --visualize
 """
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
