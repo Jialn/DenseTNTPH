@@ -199,10 +199,13 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
     if 'vis.goals_2D' in mapping:
         goals_2d = mapping['vis.goals_2D']  # goals_2D
         score = mapping['vis.scores']
+        max_val, min_val = -min(score), -max(score)
+        scale = 255 // (max_val - min_val)
         num_goals, _ = goals_2d.shape
+        # print(score)
         for j in range(num_goals):
-            b = min(255, max(20, -score[j]*12 - 30))  # score range from -5 to -20
-            r = min(255, max(20, score[j]*12 + 200))
+            b = min(255, max(20, -score[j]*scale - min_val*scale))  # score range from -5 to -20
+            r = min(255, max(20, score[j]*scale + max_val*scale))
             g = min(255, max(20, 200-r-b))
             cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (b, g, r), thickness=-1)
     # draw submap
@@ -569,8 +572,8 @@ Eval:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30   --output_dir carla_offline_data/models.densetnt.carla \
     --hidden_size 128 --eval_batch_size 1 --use_map   --core_num 16 --use_centerline --distributed_training 1   \
     --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph  \
-    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 \
-    --data_dir_for_val carla_offline_data/16000 --reuse_temp_file # --visualize
+    stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj \
+     --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 #--reuse_temp_file #--visualize
 """
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)

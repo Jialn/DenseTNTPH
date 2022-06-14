@@ -275,11 +275,11 @@ def init(args_: Args, logger_):
         print('{} {} exists'.format(get_color_text('Warning!'), args.output_dir))
         # input() # skip input as we may train on cluster using task
 
-    if args.do_eval:
-        assert os.path.exists(args.output_dir)
-        assert os.path.exists(args.data_dir_for_val)
-    else:
-        assert os.path.exists(args.data_dir)
+    # if args.do_eval:
+    #     assert os.path.exists(args.output_dir)
+    #     assert os.path.exists(args.data_dir_for_val)
+    # else:
+    #     assert os.path.exists(args.data_dir)
 
     if args.log_dir is None:
         args.log_dir = args.output_dir

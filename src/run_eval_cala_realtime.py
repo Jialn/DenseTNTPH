@@ -3,13 +3,12 @@ Run the eval realtime with carla.
 
 Run example using optimizer:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
-  --output_dir carla_offline_data/models.densetnt.carla --hidden_size 128 --eval_batch_size 1 --use_map \
+  --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map \
   --core_num 16 --use_centerline --distributed_training 1 \
   --other_params \
     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj \
-    --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 \
-    --data_dir_for_val carla_offline_data/models.densetnt.carla --reuse_temp_file # --visualize
+    --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1
 
 Run example using set-predictor:
 python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
@@ -19,14 +18,7 @@ python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30 \
     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph \
     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj \
     set_predict=6 set_predict-6 data_ratio_per_epoch=0.4 set_predict-topk=0 set_predict-one_encoder set_predict-MRratio=1.0 \
-    set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval \
-    --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ --reuse_temp_file # --visualize
-
-Note "data_dir_for_val" is not used when run_offline_testing is False, just pass any fake path instead
-
-Run example on carla dataset:
-python3 src/run_eval_cala_realtime.py --argoverse --future_frame_num 30   --output_dir models.densetnt.1 --hidden_size 128 --eval_batch_size 1 --use_map   --core_num 16 --use_centerline --distributed_training 1   --other_params     semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj     set_predict=6 set_predict-6 data_ratio_per_epoch=0.4 set_predict-topk=0 set_predict-one_encoder set_predict-MRratio=1.0     set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval     --data_dir_for_val carla_offline_data/16000/ #  --reuse_temp_file # --visualize
-
+    --do_eval #--reuse_temp_file #--visualize
 '''
 import os
 import argparse
@@ -40,7 +32,13 @@ from modeling.vectornet import VectorNet
 from carla_with_traffic import CarlaSyncModeWithTraffic, draw_vectornet_mapping
 
 run_realtime_on_carla = True  # for testing on carla
-run_offline_testing = False  # for offline testing on argoverse or carla dataset, only for testing purpose
+max_testing_steps = 2000
+# for offline testing on argoverse or carla dataset, only for testing purpose
+run_offline_testing = False
+data_dir_for_offline_testing = 'carla_offline_data/16000/'  # ..../argoverse/val_200/data/
+# extra model recover path
+set_predict_recover = 'models.densetnt.set_predict.1/model_save/model.16.bin'
+compete_traj_recover = None  # 'carla_offline_data/models.densetnt.carla/model_save/model.16.bin'
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -100,16 +98,23 @@ def do_eval(args):
         raise ValueError("model_recover_path not specified.")
     model_recover = torch.load(args.model_recover_path)
     model.load_state_dict(model_recover, strict=False)
-    # load set_predictor model
-    if 'set_predict-train_recover' in args.other_params:
-        model_recover = torch.load(args.other_params['set_predict-train_recover'])
+    # load extra model
+    if set_predict_recover is not None and 'set_predict' in args.other_params:
+        model_recover = torch.load(set_predict_recover)
         utils.load_model(model.decoder.set_predict_decoders, model_recover, prefix='decoder.set_predict_decoders.')
         utils.load_model(model.decoder.set_predict_encoders, model_recover, prefix='decoder.set_predict_encoders.')
         utils.load_model(model.decoder.set_predict_point_feature, model_recover, prefix='decoder.set_predict_point_feature.')
+    if compete_traj_recover is not None:
+        model_recover = torch.load(compete_traj_recover)
+        utils.load_model(model.decoder.goals_2D_mlps, model_recover, prefix='decoder.goals_2D_mlps.')
+        utils.load_model(model.decoder.complete_traj_cross_attention, model_recover, prefix='decoder.complete_traj_cross_attention.')
+        utils.load_model(model.decoder.complete_traj_decoder, model_recover, prefix='decoder.complete_traj_decoder.')
+
     model.to(device)
     model.eval()
 
     if run_offline_testing:
+        args.data_dir = [data_dir_for_offline_testing]
         print("Loading Evalute Dataset", args.data_dir)
         if os.path.exists(args.data_dir[0]+'lane_info.npy'):
             from dataset_carla import Dataset
@@ -161,7 +166,7 @@ def do_eval(args):
 
         loop_cnt += 1
         print("loop_cnt: " + str(loop_cnt))
-        if loop_cnt > 2000: break
+        if loop_cnt > max_testing_steps: break
     post_eval(args, file2pred, file2labels, DEs)
 
 def main():
