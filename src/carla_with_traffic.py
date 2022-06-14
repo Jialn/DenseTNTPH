@@ -186,7 +186,6 @@ def get_vectornet_mapping(all_vehicles_pos_list, agent_angle,
 
 def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
     import cv2
-    draw_goals_2D = False
     matrix, polygon_span, map_start_idx = mapping['matrix'], mapping['polyline_spans'], mapping['map_start_polyline_idx'], 
     w, h = 1600, 1600
     offset = (w//2, h//2)
@@ -197,13 +196,15 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
         new_pts = np.array([- pts_x / pix_meter + offset[0], - pts_y / pix_meter + offset[1]]).astype(np.int)
         return (new_pts[0], new_pts[1])
         
-    if draw_goals_2D:
-        goals_2d = mapping['goals_2D']
-        print(goals_2d.shape)
+    if 'vis.goals_2D' in mapping:
+        goals_2d = mapping['vis.goals_2D']  # goals_2D
+        score = mapping['vis.scores']
         num_goals, _ = goals_2d.shape
-        print(goals_2d)
         for j in range(num_goals):
-            cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (64, 64, 64), thickness=-1)
+            b = min(255, max(20, -score[j]*12 - 30))  # score range from -5 to -20
+            r = min(255, max(20, score[j]*12 + 200))
+            g = min(255, max(20, 200-r-b))
+            cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (b, g, r), thickness=-1)
     # draw submap
     for i in range(map_start_idx,len(polygon_span)):
         path_span_slice = polygon_span[i]

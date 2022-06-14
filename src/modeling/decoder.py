@@ -276,9 +276,10 @@ class Decoder(nn.Module):
             self.goals_2D_per_example_calc_loss(i, goals_2D, mapping, inputs, inputs_lengths,
                                                 hidden_states, device, loss, DE, gt_points, scores, highest_goal, labels_is_valid)
 
+        mapping[i]['vis.goals_2D'] = goals_2D
+        mapping[i]['vis.scores'] = np.array(scores.tolist())
         if args.visualize:
-            mapping[i]['vis.goals_2D'] = goals_2D
-            mapping[i]['vis.scores'] = np.array(scores.tolist())
+            # mapping[i]['vis.scores'] = np.array(scores.tolist())
             mapping[i]['vis.labels'] = gt_points
             mapping[i]['vis.labels_is_valid'] = labels_is_valid[i]
 
