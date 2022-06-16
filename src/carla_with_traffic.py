@@ -204,10 +204,8 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
         num_goals, _ = goals_2d.shape
         # print(score)
         for j in range(num_goals):
-            b = min(255, max(20, -score[j]*scale - min_val*scale))  # score range from -5 to -20
-            r = min(255, max(20, score[j]*scale + max_val*scale))
-            g = min(255, max(20, 200-r-b))
-            cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (b, g, r), thickness=-1)
+            red = min(255, max(1, score[j]*scale + max_val*scale))
+            cv2.circle(image, pts2pix(goals_2d[j, 0], goals_2d[j,1]), 2, (255-red, 0, red), thickness=-1)
     # draw submap
     for i in range(map_start_idx,len(polygon_span)):
         path_span_slice = polygon_span[i]
@@ -235,9 +233,9 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
         num_traj, num_pts, _ = pred_trajectory.shape
         for i in range(num_traj):
             for j in range(1, num_pts-1): # num_pts-1
-                color = (32, 64, 165)
+                color = (32, 165, 185)
                 cv2.line(image, pts2pix(pred_trajectory[i,j-1,0], pred_trajectory[i,j-1,1]), pts2pix(pred_trajectory[i,j,0], pred_trajectory[i,j,1]), color, 2)
-            cv2.circle(image, pts2pix(pred_trajectory[i,-1,0], pred_trajectory[i,-1,1]), 2, (0, 0, 255), thickness=-1)
+            cv2.circle(image, pts2pix(pred_trajectory[i,-1,0], pred_trajectory[i,-1,1]), 2, (0, 255, 255), thickness=-1)
     if "labels" in mapping:
         label = mapping['labels']
         num_pts, _ = label.shape
@@ -255,9 +253,6 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
     return image
 
 
-visualize_carla = False
-if visualize_carla: from carla_visualize import *
-
 class CarlaSyncModeWithTraffic(object):
     """
     Carla client manager with traffic
@@ -272,15 +267,16 @@ class CarlaSyncModeWithTraffic(object):
         self.client.set_timeout(5.0)
         self.seed = 16000 # 80899 # random seed, None
         self.respawn = False
-        self.hybrid = False
+        self.hybrid = True
         self.filterv = 'vehicle.*'
         self.generationv = 'All'
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
-        self.visualize_carla = visualize_carla
         random.seed(self.seed if self.seed is not None else int(time.time()))
+        # self.world = self.client.load_world('Town06')
         self.world = self.client.get_world()
-        # print(self.client.get_available_maps())
+        self.spectator = self.world.get_spectator()
+        self.traffic_manager = None
         self._setup_client()
         self.hero_actor = None
         self.spawned_hero = None
@@ -288,35 +284,16 @@ class CarlaSyncModeWithTraffic(object):
         self.tick_cnt = 0
         # self.world.unload_map_layer(carla.MapLayer.Buildings)
         self.map = self.world.get_map()
-        if self.visualize_carla:
-            import pygame
-            self.width, self.height = 1920, 1080
-            pygame.init()
-            self.display = pygame.display.set_mode(
-                (self.width, self.height),
-                pygame.HWSURFACE | pygame.DOUBLEBUF)
-            pygame.display.set_caption("visualizer")
-
-            self.map_image = MapImage(carla_world=self.world,
-                carla_map=self.map, pixels_per_meter=PIXELS_PER_METER)
-            self.original_surface_size = self.height
-            self.surface_size = self.map_image.big_map_surface.get_width()
-            # Render Actors
-            self.actors_surface = pygame.Surface((self.map_image.surface.get_width(), self.map_image.surface.get_height()))
-            self.actors_surface.set_colorkey(COLOR_BLACK)
-            self.border_round_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA).convert()
-            self.border_round_surface.set_colorkey(COLOR_WHITE)
-            self.border_round_surface.fill(COLOR_BLACK)
-            center_offset = (int(self.width / 2), int(self.height / 2))
-            pygame.draw.circle(self.border_round_surface, COLOR_ALUMINIUM_1, center_offset, int(self.height / 2))
-            pygame.draw.circle(self.border_round_surface, COLOR_WHITE, center_offset, int((self.height - 8) / 2))
-            scaled_original_size = self.original_surface_size * (1.0 / 0.9)
-            self.hero_surface = pygame.Surface((scaled_original_size, scaled_original_size)).convert()
-            self.result_surface = pygame.Surface((self.surface_size, self.surface_size)).convert()
-            self.result_surface.set_colorkey(COLOR_BLACK)
         # Start hero mode by default
         self._select_hero_actor()
         self.hero_actor.set_autopilot(True)
+        # Set traffic_manager paras
+        for i in range(len(self.vehicles_list)):
+            acotr_i = self.world.get_actor(self.vehicles_list[i])
+            self.traffic_manager.auto_lane_change(acotr_i, True)
+            self.traffic_manager.ignore_lights_percentage(acotr_i,80)
+            self.traffic_manager.ignore_signs_percentage(acotr_i,80)
+            self.traffic_manager.ignore_vehicles_percentage(acotr_i,20)
         self.vehicles_pos_list = []
         for i in range(len(self.vehicles_list)):
             self.vehicles_pos_list.append([])
@@ -352,6 +329,7 @@ class CarlaSyncModeWithTraffic(object):
             traffic_manager.set_random_device_seed(self.seed)
         settings = self.world.get_settings()
         traffic_manager.set_synchronous_mode(True)
+        self.traffic_manager = traffic_manager
         if not settings.synchronous_mode:
             synchronous_master = True
             settings.synchronous_mode = True
@@ -399,10 +377,7 @@ class CarlaSyncModeWithTraffic(object):
                 logging.error(response.error)
             else:
                 self.vehicles_list.append(response.actor_id)
-
         print('spawned %d vehicles, press Ctrl+C to exit.' % (len(self.vehicles_list)))
-        # Example of how to use Traffic Manager parameters
-        traffic_manager.global_percentage_speed_difference(30.0)
 
     def _select_hero_actor(self):
         hero_vehicles = [actor for actor in self.world.get_actors(
@@ -427,96 +402,12 @@ class CarlaSyncModeWithTraffic(object):
             self.spawned_hero = self.hero_actor
             self.vehicles_list.insert(0, self.hero_actor.id)
 
-    def _split_actors(self):
-        vehicles, traffic_lights, speed_limits, walkers = [], [], [], []
-        for actor_with_transform in self.actors_with_transforms:
-            actor = actor_with_transform[0]
-            if 'vehicle' in actor.type_id:
-                vehicles.append(actor_with_transform)
-            elif 'traffic_light' in actor.type_id:
-                traffic_lights.append(actor_with_transform)
-            elif 'speed_limit' in actor.type_id:
-                speed_limits.append(actor_with_transform)
-            elif 'walker' in actor.type_id:
-                walkers.append(actor_with_transform)
-        return (vehicles, traffic_lights, speed_limits, walkers)
-
-    def _render_walkers(self, surface, list_w, world_to_pixel):
-        for w in list_w:
-            color = COLOR_PLUM_0
-            # compute bounding box points
-            bb = w[0].bounding_box.extent
-            corners = [
-                carla.Location(x=-bb.x, y=-bb.y), carla.Location(x=bb.x, y=-bb.y),
-                carla.Location(x=bb.x, y=bb.y), carla.Location(x=-bb.x, y=bb.y)]
-            w[1].transform(corners)
-            corners = [world_to_pixel(p) for p in corners]
-            pygame.draw.polygon(surface, color, corners)
-
-    def _render_vehicles(self, surface, list_v, world_to_pixel):
-        # print("list_v:")
-        # print(len(list_v))
-        for v in list_v:
-            color = COLOR_SKY_BLUE_0
-            if int(v[0].attributes['number_of_wheels']) == 2:
-                color = COLOR_CHOCOLATE_1
-            if v[0].attributes['role_name'] == 'hero':
-                color = COLOR_CHAMELEON_0
-            # Compute bounding box points
-            bb = v[0].bounding_box.extent
-            corners = [carla.Location(x=-bb.x, y=-bb.y), carla.Location(x=bb.x - 0.8, y=-bb.y),
-                       carla.Location(x=bb.x, y=0), carla.Location(x=bb.x - 0.8, y=bb.y),
-                       carla.Location(x=-bb.x, y=bb.y), carla.Location(x=-bb.x, y=-bb.y)]
-            v[1].transform(corners)
-            corners = [world_to_pixel(p) for p in corners]
-            # print(corners)
-            pygame.draw.lines(surface, color, False, corners, int(math.ceil(4.0 * self.map_image.scale)))
-
-    def render_actors(self, surface, vehicles, walkers):
-        self._render_vehicles(surface, vehicles, self.map_image.world_to_pixel)
-        self._render_walkers(surface, walkers, self.map_image.world_to_pixel)
-
-    def clip_surfaces(self, clipping_rect):
-        self.actors_surface.set_clip(clipping_rect)
-        self.result_surface.set_clip(clipping_rect)
-
-    def render(self):
-        if self.actors_with_transforms is None:
-            print("no actors_with_transforms!")
-            return
-        display = self.display
-        self.result_surface.fill(COLOR_BLACK)
-        vehicles, traffic_lights, speed_limits, walkers = self._split_actors()
-        # render
-        self.actors_surface.fill(COLOR_BLACK)
-        self.render_actors(self.actors_surface, vehicles, walkers)
-        # blit surfaces
-        surfaces = ((self.map_image.surface, (0, 0)),
-                    (self.actors_surface, (0, 0)))
-        angle = self.hero_transform.rotation.yaw + 90.0
-        hero_location_screen = self.map_image.world_to_pixel(self.hero_transform.location)
-        hero_front = self.hero_transform.get_forward_vector()
-        translation_offset = (hero_location_screen[0] - self.hero_surface.get_width() / 2 + hero_front.x * PIXELS_AHEAD_VEHICLE,
-            (hero_location_screen[1] - self.hero_surface.get_height() / 2 + hero_front.y * PIXELS_AHEAD_VEHICLE))
-        ## apply clipping rect
-        clipping_rect = pygame.Rect(translation_offset[0],
-                                    translation_offset[1],
-                                    self.hero_surface.get_width(),
-                                    self.hero_surface.get_height())
-        self.clip_surfaces(clipping_rect)
-        Util.blits(self.result_surface, surfaces)
-        self.border_round_surface.set_clip(clipping_rect)
-        self.hero_surface.fill(COLOR_ALUMINIUM_4)
-        self.hero_surface.blit(self.result_surface, (-translation_offset[0], -translation_offset[1]))
-        rotated_result_surface = pygame.transform.rotozoom(self.hero_surface, angle, 0.9).convert()
-        center = (display.get_width() / 2, display.get_height() / 2)
-        rotation_pivot = rotated_result_surface.get_rect(center=center)
-        display.blit(rotated_result_surface, rotation_pivot)
-        display.blit(self.border_round_surface, (0, 0))
-        pygame.display.flip()
-
     def tick(self):
         self.world.tick()
+        loc = self.hero_transform.location
+        self.spectator.set_transform(
+            carla.Transform(carla.Location(x=loc.x,y=loc.y,z=60),
+            carla.Rotation(yaw=self.hero_transform.rotation.yaw,pitch=-89.9,roll=0)))  # 89.9 to avoid gimbal lock
         # save the trajectory of all vechicles into a list
         for i in range(len(self.vehicles_list)):
             acotr_i = self.world.get_actor(self.vehicles_list[i])
@@ -529,10 +420,15 @@ class CarlaSyncModeWithTraffic(object):
         self.actors_with_transforms = [(actor, actor.get_transform()) for actor in actors]
         if self.hero_actor is not None:
             self.hero_transform = self.hero_actor.get_transform()
-        # visualize
-        if self.visualize_carla:
-            self.render()
         self.tick_cnt += 1
+        # random set options
+        if random.randint(1, 100) == 1:  # every 10s on average
+            print(random.randint(-200, 50))
+            self.traffic_manager.global_percentage_speed_difference(random.randint(-200, 50)) # from 50% to 200%
+            self.traffic_manager.set_global_distance_to_leading_vehicle(1.5 + 10*random.random())
+            for i in range(len(self.vehicles_list)):
+                acotr_i = self.world.get_actor(self.vehicles_list[i])
+                self.traffic_manager.vehicle_percentage_speed_difference(acotr_i,random.randint(-200, 50))
 
     def get_vectornet_input(self, mapping):
         angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
