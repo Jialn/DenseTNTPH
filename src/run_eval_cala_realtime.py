@@ -38,7 +38,8 @@ run_offline_testing = False
 data_dir_for_offline_testing = 'carla_offline_data/16000/'  # ..../argoverse/val_200/data/
 # extra model recover path
 set_predict_recover = 'models.densetnt.set_predict.1/model_save/model.16.bin'
-compete_traj_recover = None  # 'carla_offline_data/models.densetnt.carla/model_save/model.16.bin'
+compete_traj_recover = None # 'models.densetnt.1/model_save/model.16.bin'
+
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -109,7 +110,8 @@ def do_eval(args):
         utils.load_model(model.decoder.goals_2D_mlps, model_recover, prefix='decoder.goals_2D_mlps.')
         utils.load_model(model.decoder.complete_traj_cross_attention, model_recover, prefix='decoder.complete_traj_cross_attention.')
         utils.load_model(model.decoder.complete_traj_decoder, model_recover, prefix='decoder.complete_traj_decoder.')
-
+        # print(model.state_dict()['decoder.complete_traj_cross_attention.value.weight'])
+        
     model.to(device)
     model.eval()
 

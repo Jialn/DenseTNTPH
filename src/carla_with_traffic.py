@@ -106,8 +106,9 @@ def get_vectornet_mapping(all_vehicles_pos_list, agent_angle,
     VECTOR_Y = 3
     lane_ids = get_lane_ids_in_xy_bbox(agent_loc[0], agent_loc[1], map_bound_info, min_distance_submap)
     local_lane_centerlines = [get_lane_segment_centerline(lane_id, map_lane_info) for lane_id in lane_ids]
-    polygons = local_lane_centerlines
-    polygons = [polygon[:, :2].copy() for polygon in polygons]
+    polygons = []
+    for polygon in local_lane_centerlines:
+        if len(polygon) > 2: polygons.append(polygon[:, :2].copy())
     for index_polygon, polygon in enumerate(polygons):
         for i, point in enumerate(polygon):
             point[0], point[1] = rotate(point[0] - agent_loc[0], point[1] - agent_loc[1], agent_angle)
@@ -481,7 +482,7 @@ if __name__ == '__main__':
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             # TODO: save lane_info and bound_info as npy
             # carla_client.bound_info, carla_client.lane_info
-            offline_data_path = offline_data_path+'/' + str(carla_client.seed)+'/'
+            offline_data_path = offline_data_path+'/' + str(carla_client.seed)+'_finetune_test/'
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
             os.system("cp bound_info.npy " + offline_data_path)
             os.system("cp lane_info.npy " + offline_data_path)

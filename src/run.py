@@ -143,10 +143,8 @@ def pair2joint(pred_trajectory, pred_score, args):
 
 
 def train_one_epoch(model, iter_bar, optimizer, device, args: utils.Args, i_epoch, queue=None, optimizer_2=None):
-    li_ADE = []
     li_FDE = []
     utils.other_errors_dict.clear()
-    start_time = time.time()
     if 'data_ratio_per_epoch' in args.other_params:
         max_iter_num = int(float(args.other_params['data_ratio_per_epoch']) * len(iter_bar))
         if is_main_device(device):
@@ -222,7 +220,7 @@ def demo_basic(rank, world_size, kwargs, queue):
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
     else:
         model = VectorNet(args).to(rank)
-
+    
     if 'set_predict' in args.other_params:
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate)
     elif 'complete_traj-3' in args.other_params:
@@ -259,7 +257,31 @@ def demo_basic(rank, world_size, kwargs, queue):
             batch_size=args.train_batch_size // world_size,
             collate_fn=utils.batch_list_to_batch_tensors)
 
-    for i_epoch in range(int(args.num_train_epochs)):
+    continue_training_epoch_cnt = 0
+    if args.model_recover_path is not None:
+        continue_training_epoch_cnt = int(args.model_recover_path[-6:-4])
+        print("Continue training with model: " + args.model_recover_path)
+        model_recover = torch.load(args.model_recover_path)
+        model_recover_rename_key = {}
+        for key in model_recover.keys():
+            model_recover_rename_key['module.'+key] = model_recover[key]
+        print("Weight example of complete_traj_cross_attention.value.weight:")
+        print(model_recover_rename_key['module.decoder.complete_traj_cross_attention.value.weight'])
+        model.load_state_dict(model_recover_rename_key, strict=True)
+        model.to(rank)
+
+    print("Loaded model:")
+    print(model.state_dict().keys())
+    print("Weight example of loaded complete_traj_cross_attention.value.weight:")
+    print(model.state_dict()['module.decoder.complete_traj_cross_attention.value.weight'])
+
+    for i_epoch in range(continue_training_epoch_cnt):
+        if 'complete_traj-3' in args.other_params:
+            learning_rate_decay(args, i_epoch, optimizer, optimizer_2)
+        else:
+            learning_rate_decay(args, i_epoch, optimizer)
+
+    for i_epoch in range(continue_training_epoch_cnt, continue_training_epoch_cnt+int(args.num_train_epochs)):
         if 'complete_traj-3' in args.other_params:
             learning_rate_decay(args, i_epoch, optimizer, optimizer_2)
         else:
@@ -278,6 +300,9 @@ def demo_basic(rank, world_size, kwargs, queue):
             train_one_epoch(model, iter_bar, optimizer, rank, args, i_epoch, queue, optimizer_2)
         else:
             train_one_epoch(model, iter_bar, optimizer, rank, args, i_epoch, queue)
+        
+        print("Weight example of loaded complete_traj_cross_attention.value.weight:")
+        print(model.state_dict()['module.decoder.complete_traj_cross_attention.value.weight'])
 
         if args.distributed_training:
             dist.barrier()
