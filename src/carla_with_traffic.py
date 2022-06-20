@@ -499,9 +499,8 @@ if __name__ == '__main__':
                     agent_angles.append(angle)
                     # carla_client.get_vectornet_input(mapping)
                     # draw_vectornet_mapping(mapping, wait_key=10)
-                append_name = str((i+1)*offline_data_block_size)+'.npy'
-                np.save(offline_data_path+'vehicles_pos_list_'+append_name, np.array(vehicles_pos_lists), allow_pickle=True)
-                np.save(offline_data_path+'agent_angle_'+append_name, np.array(agent_angles), allow_pickle=True)
+                append_name = str((i+1)*offline_data_block_size)
+                np.savez_compressed(offline_data_path+'vehicles_pos_list_'+append_name, vehicles_pos_lists=np.array(vehicles_pos_lists), agent_angles=np.array(agent_angles))
                 print("1000 samples generated in "+str(time.time()-start_time)+" sec, current data gen index:" + str(i*offline_data_block_size)) 
         else:
             mapping = {}

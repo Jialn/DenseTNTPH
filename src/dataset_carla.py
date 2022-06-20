@@ -44,16 +44,15 @@ class Dataset(torch.utils.data.Dataset):
                     file = queue.get()
                     if file is None:
                         break
-                    if file.endswith("npy"):
+                    if file.endswith("npz"):
                         num_str_start_index = len(file_path)+18
-                        agent_angle_block_path = file_path+'agent_angle_'+file[num_str_start_index:]
                         start_idx = int(file[num_str_start_index:-4])
                         # print(start_idx)
-                        print("start processing:" + str(agent_angle_block_path))
-                        vehicles_pos_lists_block = np.load(file)
-                        agent_angle_block = np.load(agent_angle_block_path)
+                        print("start processing:" + str(file))
+                        loaded_file = np.load(file)
+                        vehicles_pos_lists_block = loaded_file['vehicles_pos_lists']
+                        agent_angle_block = loaded_file['agent_angles']
                         bound_info = np.load(file_path+'bound_info.npy', allow_pickle=True).item()
-                        # print(file_path+'bound_info.npy')
                         lane_info = np.load(file_path+'lane_info.npy', allow_pickle=True).item()
                         for i in range(1000):
                             instance = {}
@@ -65,7 +64,7 @@ class Dataset(torch.utils.data.Dataset):
                                 queue_res.put(data_compress)
                             else:
                                 queue_res.put(None)
-                        print("Done:" + str(agent_angle_block_path))
+                        print("Done:" + str(file))
 
             processes = [Process(target=calc_ex_list, args=(data_dir[0], queue, queue_res, args,)) for _ in range(args.core_num)]
             for each in processes:
