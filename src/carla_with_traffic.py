@@ -16,8 +16,8 @@ Make sure you are using python3.7
 
 To Run:
 ./CarlaUE4.sh # -RenderOffScreen
-# to use less GPU memory:
-./CarlaUE4.sh  -RenderOffScreen -quality-level=Low 
+# to use less GPU memory, less GPU butpossible crash:
+./CarlaUE4.sh  -RenderOffScreen -quality-level=Low
 # testing:
 python src/carla_with_traffic.py
 """
@@ -254,6 +254,8 @@ def draw_vectornet_mapping(mapping, win_name="matrix_vis", wait_key=None):
     return image
 
 
+map_index = 1
+
 class CarlaSyncModeWithTraffic(object):
     """
     Carla client manager with traffic
@@ -274,7 +276,7 @@ class CarlaSyncModeWithTraffic(object):
         self.number_of_vehicles = 20
         self.max_trajectory_size = 51
         random.seed(self.seed if self.seed is not None else int(time.time()))
-        # self.world = self.client.load_world('Town06')
+        self.world = self.client.load_world('Town0' + str(map_index))
         self.world = self.client.get_world()
         self.spectator = self.world.get_spectator()
         self.traffic_manager = None
@@ -324,7 +326,7 @@ class CarlaSyncModeWithTraffic(object):
         if self.respawn:
             traffic_manager.set_respawn_dormant_vehicles(True)
         if self.hybrid:
-            traffic_manager.set_hybrid_physics_mode(True)
+            traffic_manager.set_hybrid_physics_mode(False)
             traffic_manager.set_hybrid_physics_radius(70.0)
         if self.seed is not None:
             traffic_manager.set_random_device_seed(self.seed)
@@ -423,13 +425,17 @@ class CarlaSyncModeWithTraffic(object):
             self.hero_transform = self.hero_actor.get_transform()
         self.tick_cnt += 1
         # random set options
-        if random.randint(1, 100) == 1:  # every 10s on average
-            print(random.randint(-200, 50))
-            self.traffic_manager.global_percentage_speed_difference(random.randint(-200, 50)) # from 50% to 200%
-            self.traffic_manager.set_global_distance_to_leading_vehicle(1.5 + 10*random.random())
+        if random.randint(1, 75) == 1: 
+            # print("force lane change")
+            acotr_i = self.world.get_actor(self.vehicles_list[0])
+            self.traffic_manager.force_lane_change(acotr_i, bool(random.choice([True, False]))) # direction: True is the one on the right and False is the left one.
+        if random.randint(1, 100) == 1: # every 10s on average
+            # self.traffic_manager.global_percentage_speed_difference(random.randint(-100, 50)) # from 50% to 200%
+            self.traffic_manager.set_global_distance_to_leading_vehicle(1.5 + 6*random.random())
+        if random.randint(1, 100) == 1: 
             for i in range(len(self.vehicles_list)):
                 acotr_i = self.world.get_actor(self.vehicles_list[i])
-                self.traffic_manager.vehicle_percentage_speed_difference(acotr_i,random.randint(-200, 50))
+                self.traffic_manager.vehicle_percentage_speed_difference(acotr_i,random.randint(-100, 50))
 
     def get_vectornet_input(self, mapping):
         angle = (-self.hero_transform.rotation.yaw + 90) * 3.14159265359 / 180.0 # TODO: to be confirmed
@@ -456,7 +462,7 @@ class CarlaSyncModeWithTraffic(object):
 
 save_offline_data = True # if True, will save mapping data as npy and trajectory as csv file
 offline_data_path = './carla_offline_data'
-offline_data_num_killo = 10  # in K, will * 1000
+offline_data_num_killo = 20  # in K, will * 1000
 
 """
 Training Example:
@@ -499,7 +505,9 @@ if __name__ == '__main__':
                     agent_angles.append(angle)
                     # carla_client.get_vectornet_input(mapping)
                     # draw_vectornet_mapping(mapping, wait_key=10)
-                append_name = str((i+1)*offline_data_block_size)
+                append_name = str(((map_index-1)*offline_data_num_killo + i+1)*offline_data_block_size)
+                os.system("cp bound_info.npy " + offline_data_path+'bound_info_'+append_name+'.npy')
+                os.system("cp lane_info.npy " + offline_data_path+'lane_info_'+append_name+'.npy')
                 np.savez_compressed(offline_data_path+'vehicles_pos_list_'+append_name, vehicles_pos_lists=np.array(vehicles_pos_lists), agent_angles=np.array(agent_angles))
                 print("1000 samples generated in "+str(time.time()-start_time)+" sec, current data gen index:" + str(i*offline_data_block_size)) 
         else:

@@ -52,8 +52,9 @@ class Dataset(torch.utils.data.Dataset):
                         loaded_file = np.load(file)
                         vehicles_pos_lists_block = loaded_file['vehicles_pos_lists']
                         agent_angle_block = loaded_file['agent_angles']
-                        bound_info = np.load(file_path+'bound_info.npy', allow_pickle=True).item()
-                        lane_info = np.load(file_path+'lane_info.npy', allow_pickle=True).item()
+                        append_name = str(start_idx)
+                        bound_info = np.load(file_path+'bound_info_'+append_name+'.npy', allow_pickle=True).item()
+                        lane_info = np.load(file_path+'lane_info_'+append_name+'.npy', allow_pickle=True).item()
                         for i in range(1000):
                             instance = {}
                             vehicles_pos_list, angle = vehicles_pos_lists_block[i], agent_angle_block[i]
