@@ -93,7 +93,7 @@ python3 src/run.py --argoverse --future_frame_num 30 \
 Example on my machine:
 ```
 OUTPUT_DIR=models.densetnt.1
-python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir /media/jiangtao.li/simu_machine_dat/argoverse/train/data --output_dir ${OUTPUT_DIR} --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
+python3 src/run.py --argoverse --future_frame_num 30   --do_train --data_dir ./data/argoverse/train/data --output_dir ${OUTPUT_DIR} --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1 --other_params semantic_lane direction goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 # --reuse_temp_file
 ```
 Training takes 20 minutes per epoch and 5 hours for the default 16 epochs on 8 × 2080Ti. 
 Add --reuse_temp_file  to skip re-listing the map file for the second time running
@@ -109,7 +109,7 @@ Suppose the validation data of Argoverse motion forecasting is at ```./val/data/
 
 Example on my machine:
 ```
-python3 src/run.py --argoverse --future_frame_num 30 --output_dir models.densetnt.1   --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1  --other_params     semantic_lane direction      goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ # --reuse_temp_file --visualize
+python3 src/run.py --argoverse --future_frame_num 30 --output_dir models.densetnt.1   --hidden_size 128 --train_batch_size 64 --use_map   --core_num 16 --use_centerline --distributed_training 1  --other_params     semantic_lane direction      goals_2D enhance_global_graph subdivide lazy_points laneGCN point_sub_graph     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj complete_traj-3 --do_eval --eval_params optimization MRminFDE cnt_sample=9 opti_time=0.1 --data_dir_for_val ./data/argoverse/val_200/data/ # --reuse_temp_file --visualize
 ```
 Result for all vali data:
 ```
@@ -144,7 +144,7 @@ python src/run.py --argoverse --future_frame_num 30 \
 Example on my machine:
 ```bash
 python3 src/run.py --argoverse --future_frame_num 30 \
-  --do_train --data_dir /media/jiangtao.li/simu_machine_dat/argoverse/train/data/ --output_dir models.densetnt.set_predict.1 \
+  --do_train --data_dir ./data/argoverse/train/data/ --output_dir models.densetnt.set_predict.1 \
   --hidden_size 128 --train_batch_size 64 --use_map \
   --core_num 16 --use_centerline --distributed_training 1 \
   --other_params \
@@ -167,7 +167,7 @@ python3 src/run.py --argoverse --future_frame_num 30 \
     stage_one stage_one_dynamic=0.95 laneGCN-4 point_level-4-3 complete_traj \
     set_predict=6 set_predict-6 data_ratio_per_epoch=0.4 set_predict-topk=0 set_predict-one_encoder set_predict-MRratio=1.0 \
     set_predict-train_recover=models.densetnt.set_predict.1/model_save/model.16.bin --do_eval \
-    --data_dir_for_val /media/jiangtao.li/simu_machine_dat/argoverse/val_200/data/ --reuse_temp_file # --visualize
+    --data_dir_for_val ./data/argoverse/val_200/data/ --reuse_temp_file # --visualize
 ```
 and changed codes of the model loading part accrodingly. Result:
 ```

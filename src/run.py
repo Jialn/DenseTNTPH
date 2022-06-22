@@ -1,8 +1,6 @@
 import argparse
-import itertools
 import logging
 import os
-import time
 from functools import partial
 
 import numpy as np
@@ -242,11 +240,10 @@ def demo_basic(rank, world_size, kwargs, queue):
     args.reuse_temp_file = True
 
     if args.argoverse:
-        if args.argoverse:
-            if os.path.exists(args.data_dir[0]+'lane_info.npy'):
-                from dataset_carla import Dataset
-            else:
-                from dataset_argoverse import Dataset
+        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
+            from carla_scripts.dataset_carla import Dataset
+        else:
+            from argoverse_scripts.dataset_argoverse import Dataset
         train_dataset = Dataset(args, args.train_batch_size, to_screen=False)
 
         train_sampler = DistributedSampler(train_dataset, shuffle=args.do_train)
@@ -317,9 +314,9 @@ def run(args):
     print("Loading dataset", args.data_dir)
     if args.argoverse:
         if os.path.exists(args.data_dir[0]+'lane_info.npy'):
-            from dataset_carla import Dataset
+            from carla_scripts.dataset_carla import Dataset
         else:
-            from dataset_argoverse import Dataset
+            from argoverse_scripts.dataset_argoverse import Dataset
 
     if args.distributed_training:
         queue = mp.Manager().Queue()
