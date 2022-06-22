@@ -1,5 +1,5 @@
 """
-CarlaEnvironment.
+CarlaEnvironment
 Install carla:
     wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.13.tar.gz
     mkdir carla && \
@@ -20,6 +20,8 @@ To Run:
 ./CarlaUE4.sh  -RenderOffScreen -quality-level=Low
 # testing:
 python src/carla_scripts/carla_with_traffic.py
+
+To recording data, set save_offline_data=True.
 """
 import os, sys, time
 import carla

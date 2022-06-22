@@ -1,6 +1,9 @@
-# DenseTNT
+# DenseTNT on Carla
+
+Add some scripts to train and fintune with Carla, Also support realtime running on Carla.
+
 ### [Paper](https://arxiv.org/abs/2108.09640) | [Webpage](https://tsinghua-mars-lab.github.io/DenseTNT/)
-- This is the official implementation of the paper: **DenseTNT: End-to-end Trajectory Prediction from Dense Goal Sets** (ICCV 2021).
+- This is the implementation of the paper: **DenseTNT: End-to-end Trajectory Prediction from Dense Goal Sets** (ICCV 2021).
 - **DenseTNT v1.0** was released in November 1st, 2021.
 
 ## Quick Start
