@@ -175,8 +175,6 @@ def get_all_lane_info(carla_map):
         bound_info['lanes']['ids'] = lanes_id
         bound_info['lanes']['bounds'] = lanes_bounds
 
-    np.save('bound_info.npy', bound_info,allow_pickle=True)
-    np.save('lane_info.npy', lane_info,allow_pickle=True)
     return bound_info, lane_info
 
 

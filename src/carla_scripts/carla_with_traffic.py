@@ -464,7 +464,7 @@ class CarlaSyncModeWithTraffic(object):
 
 
 save_offline_data = False # if True, will save mapping data as npy and trajectory as csv file
-offline_data_path = './carla_offline_data'
+offline_data_path = './data/carla_offline_data'
 offline_data_num_killo = 20  # in K, will * 1000
 
 """
@@ -482,12 +482,9 @@ if __name__ == '__main__':
             import os
             import time
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
-            # TODO: save lane_info and bound_info as npy
-            # carla_client.bound_info, carla_client.lane_info
-            offline_data_path = offline_data_path+'/' + str(carla_client.seed) # +'_finetune_test/'
+            offline_data_path = offline_data_path+'/' + str(carla_client.seed) + '/' # +'_finetune_test/'
             if not os.path.exists(offline_data_path): os.system("mkdir " + offline_data_path)
-            os.system("cp bound_info.npy " + offline_data_path)
-            os.system("cp lane_info.npy " + offline_data_path)
+            np.savetxt(offline_data_path+'carla_flag.txt', np.array([map_index]))
             mapping = None
             for i in range(offline_data_num_killo):
                 vehicles_pos_lists = []
@@ -502,9 +499,9 @@ if __name__ == '__main__':
                     # carla_client.get_vectornet_input(mapping)
                     # draw_vectornet_mapping(mapping, wait_key=10)
                 append_name = str(((map_index-1)*offline_data_num_killo + i+1)*offline_data_block_size)
-                os.system("cp bound_info.npy " + offline_data_path+'bound_info_'+append_name+'.npy')
-                os.system("cp lane_info.npy " + offline_data_path+'lane_info_'+append_name+'.npy')
-                np.savez_compressed(offline_data_path+'vehicles_pos_list_'+append_name, vehicles_pos_lists=np.array(vehicles_pos_lists), agent_angles=np.array(agent_angles))
+                np.savez_compressed(offline_data_path+'vector_data_list_'+append_name, 
+                    vehicles_pos_lists=np.array(vehicles_pos_lists), agent_angles=np.array(agent_angles),
+                    lane_info=carla_client.lane_info, bound_info=carla_client.bound_info)
                 print("1000 samples generated in "+str(time.time()-start_time)+" sec, current data gen index:" + str(i*offline_data_block_size)) 
         else:
             mapping = {}

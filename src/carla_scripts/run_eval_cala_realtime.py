@@ -38,7 +38,7 @@ run_realtime_on_carla = True  # for testing on carla
 max_testing_steps = 2000
 # for offline testing on argoverse or carla dataset, only for testing purpose
 run_offline_testing = False
-data_dir_for_offline_testing = 'carla_offline_data/16000/'  # ..../argoverse/val_200/data/
+data_dir_for_offline_testing = 'data/carla_offline_data/16000/'  # ..../argoverse/val_200/data/
 # extra model recover path to override
 set_predict_recover = 'models/train_with_argoverse.set_predict.epoch16.bin'  # if set to None, optimizer should be used in args
 compete_traj_recover = None  # 'models/argoverse_finetune_with_100K_carla.epoch6.bin'
@@ -121,9 +121,9 @@ def do_eval(args):
     if run_offline_testing:
         args.data_dir = [data_dir_for_offline_testing]
         print("Loading Evalute Dataset", args.data_dir)
-        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
-            from carla.dataset_carla import Dataset
-        else: # 'carla'
+        if os.path.exists(args.data_dir[0]+'carla_flag.txt'):
+            from carla_scripts.dataset_carla import Dataset
+        else:
             from argoverse_scripts.dataset_argoverse import Dataset
         eval_dataset = Dataset(args, args.eval_batch_size)
         eval_sampler = SequentialSampler(eval_dataset)

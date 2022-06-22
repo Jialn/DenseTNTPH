@@ -29,7 +29,7 @@ class Dataset(torch.utils.data.Dataset):
             for each_dir in data_dir:
                 root, dirs, cur_files = os.walk(each_dir).__next__()
                 files.extend([os.path.join(each_dir, file) for file in cur_files if
-                                file.startswith('vehicles_pos_list_')])
+                                file.startswith('vector_data_list_')])
             print(files[:5], files[-5:])
             pbar = tqdm(total=len(files))
 
@@ -45,16 +45,14 @@ class Dataset(torch.utils.data.Dataset):
                     if file is None:
                         break
                     if file.endswith("npz"):
-                        num_str_start_index = len(file_path)+18
-                        start_idx = int(file[num_str_start_index:-4])
-                        # print(start_idx)
                         print("start processing:" + str(file))
-                        loaded_file = np.load(file)
+                        num_str_start_index = len(file_path)+len("vector_data_list_")
+                        start_idx = int(file[num_str_start_index:-4])
+                        loaded_file = np.load(file, allow_pickle=True)
                         vehicles_pos_lists_block = loaded_file['vehicles_pos_lists']
                         agent_angle_block = loaded_file['agent_angles']
-                        append_name = str(start_idx)
-                        bound_info = np.load(file_path+'bound_info_'+append_name+'.npy', allow_pickle=True).item()
-                        lane_info = np.load(file_path+'lane_info_'+append_name+'.npy', allow_pickle=True).item()
+                        bound_info = loaded_file['bound_info'][()]
+                        lane_info = loaded_file['lane_info'][()]
                         for i in range(1000):
                             instance = {}
                             vehicles_pos_list, angle = vehicles_pos_lists_block[i], agent_angle_block[i]
@@ -115,7 +113,6 @@ class Dataset(torch.utils.data.Dataset):
         # pickle_file = open(file, 'rb')
         # instance = pickle.load(pickle_file)
         # pickle_file.close()
-
         data_compress = self.ex_list[idx]
         instance = pickle.loads(zlib.decompress(data_compress))
         return instance

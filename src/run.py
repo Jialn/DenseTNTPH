@@ -56,7 +56,6 @@ def learning_rate_decay(args, i_epoch, optimizer, optimizer_2=None):
 
         if 'complete_traj-3' in args.other_params:
             assert False
-
     else:
         if i_epoch > 0 and i_epoch % 5 == 0:
             for p in optimizer.param_groups:
@@ -78,7 +77,6 @@ def gather_and_output_motion_metrics(args, device, queue, motion_metrics, metric
         print('all metric_values', len(motion_metrics.get_all()[0]))
 
         score_file = utils.get_eval_identifier()
-
         utils.logging(utils.metric_values_to_string(motion_metrics.result(), metric_names),
                       type=score_file, to_screen=True, append_time=True)
 
@@ -206,7 +204,6 @@ def demo_basic(rank, world_size, kwargs, queue):
         def setup(rank, world_size):
             os.environ['MASTER_ADDR'] = 'localhost'
             os.environ['MASTER_PORT'] = args.master_port
-
             # initialize the process group
             dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
@@ -240,7 +237,7 @@ def demo_basic(rank, world_size, kwargs, queue):
     args.reuse_temp_file = True
 
     if args.argoverse:
-        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
+        if os.path.exists(args.data_dir[0]+'carla_flag.txt'):
             from carla_scripts.dataset_carla import Dataset
         else:
             from argoverse_scripts.dataset_argoverse import Dataset
@@ -266,11 +263,10 @@ def demo_basic(rank, world_size, kwargs, queue):
         print(model_recover_rename_key['module.decoder.complete_traj_cross_attention.value.weight'])
         model.load_state_dict(model_recover_rename_key, strict=True)
         model.to(rank)
-
-    print("Loaded model:")
-    print(model.state_dict().keys())
-    print("Weight example of loaded complete_traj_cross_attention.value.weight:")
-    print(model.state_dict()['module.decoder.complete_traj_cross_attention.value.weight'])
+        print("Loaded model:")
+        print(model.state_dict().keys())
+        print("Weight example of loaded complete_traj_cross_attention.value.weight:")
+        print(model.state_dict()['module.decoder.complete_traj_cross_attention.value.weight'])
 
     for i_epoch in range(continue_training_epoch_cnt):
         if 'complete_traj-3' in args.other_params:
@@ -308,24 +304,18 @@ def demo_basic(rank, world_size, kwargs, queue):
 
 
 def run(args):
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-
-    print("Loading dataset", args.data_dir)
-    if args.argoverse:
-        if os.path.exists(args.data_dir[0]+'lane_info.npy'):
-            from carla_scripts.dataset_carla import Dataset
-        else:
-            from argoverse_scripts.dataset_argoverse import Dataset
-
+    if os.path.exists(args.data_dir[0]+'carla_flag.txt'):
+        from carla_scripts.dataset_carla import Dataset
+    else:
+        from argoverse_scripts.dataset_argoverse import Dataset
     if args.distributed_training:
         queue = mp.Manager().Queue()
         kwargs = {'args': args}
         spawn_context = mp.spawn(demo_basic,
-                                 args=(args.distributed_training, kwargs, queue),
-                                 nprocs=args.distributed_training,
-                                 join=False)
-        train_dataset = Dataset(args, args.train_batch_size)
+                                    args=(args.distributed_training, kwargs, queue),
+                                    nprocs=args.distributed_training,
+                                    join=False)
+        train_dataset = Dataset(args, args.train_batch_size)  # to generate tmp file for distributed_training
         queue.put(True)
         while not spawn_context.join():
             pass
@@ -343,15 +333,11 @@ def main():
         "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     logger.info("device: {}".format(device))
 
-    if args.argoverse:
-        if args.do_train:
-            run(args)
-        else:
-            from do_eval import do_eval
-            do_eval(args)
+    if args.do_train:
+        run(args)
     else:
-        assert False
-
+        from do_eval import do_eval
+        do_eval(args)
     logger.info('Finish.')
 
 
